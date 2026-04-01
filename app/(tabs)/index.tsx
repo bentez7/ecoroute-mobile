@@ -1,132 +1,98 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  ImageBackground,
-  ScrollView,
-  TouchableOpacity,
-} from "react-native";
-import Colors from "../../constants/Colors";
-import RouteCard from "../../components/RouteCard";
+import { Image } from 'expo-image';
+import { Platform, StyleSheet } from 'react-native';
 
-export default function MapScreen() {
+import { HelloWave } from '@/components/hello-wave';
+import ParallaxScrollView from '@/components/parallax-scroll-view';
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { Link } from 'expo-router';
+
+export default function HomeScreen() {
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.logo}>EcoRoute</Text>
-        <Text style={styles.subtitle}>Carbon-smart navigation</Text>
-      </View>
-
-      <ImageBackground
-        source={{
-          uri: "https://images.unsplash.com/photo-1524661135-423995f22d0b",
-        }}
-        style={styles.hero}
-      >
-        <View style={styles.inputCard}>
-          <Text style={styles.label}>From</Text>
-          <Text style={styles.value}>Current Location</Text>
-        </View>
-
-        <View style={styles.inputCard}>
-          <Text style={styles.label}>To</Text>
-          <Text style={styles.value}>123 Business Park, City Center</Text>
-        </View>
-      </ImageBackground>
-
-      <View style={styles.content}>
-        <Text style={styles.sectionTitle}>Choose Your Route</Text>
-
-        <RouteCard
-          title="Eco Route"
-          details="28 min   •   15.2 km   •   2.8 kg CO₂"
-          badge="-35% CO₂"
-          active
+    <ParallaxScrollView
+      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
+      headerImage={
+        <Image
+          source={require('@/assets/images/partial-react-logo.png')}
+          style={styles.reactLogo}
         />
+      }>
+      <ThemedView style={styles.titleContainer}>
+        <ThemedText type="title">Welcome!</ThemedText>
+        <HelloWave />
+      </ThemedView>
+      <ThemedView style={styles.stepContainer}>
+        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
+        <ThemedText>
+          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
+          Press{' '}
+          <ThemedText type="defaultSemiBold">
+            {Platform.select({
+              ios: 'cmd + d',
+              android: 'cmd + m',
+              web: 'F12',
+            })}
+          </ThemedText>{' '}
+          to open developer tools.
+        </ThemedText>
+      </ThemedView>
+      <ThemedView style={styles.stepContainer}>
+        <Link href="/modal">
+          <Link.Trigger>
+            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
+          </Link.Trigger>
+          <Link.Preview />
+          <Link.Menu>
+            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
+            <Link.MenuAction
+              title="Share"
+              icon="square.and.arrow.up"
+              onPress={() => alert('Share pressed')}
+            />
+            <Link.Menu title="More" icon="ellipsis">
+              <Link.MenuAction
+                title="Delete"
+                icon="trash"
+                destructive
+                onPress={() => alert('Delete pressed')}
+              />
+            </Link.Menu>
+          </Link.Menu>
+        </Link>
 
-        <RouteCard
-          title="Fastest Route"
-          details="22 min   •   18.5 km   •   4.3 kg CO₂"
-        />
-
-        <RouteCard
-          title="Shortest Route"
-          details="25 min   •   14.8 km   •   3.2 kg CO₂"
-          badge="-25% CO₂"
-        />
-
-        <TouchableOpacity style={styles.startButton}>
-          <Text style={styles.startButtonText}>Start Navigation</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+        <ThemedText>
+          {`Tap the Explore tab to learn more about what's included in this starter app.`}
+        </ThemedText>
+      </ThemedView>
+      <ThemedView style={styles.stepContainer}>
+        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
+        <ThemedText>
+          {`When you're ready, run `}
+          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
+          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
+          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
+          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
+        </ThemedText>
+      </ThemedView>
+    </ParallaxScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.background,
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  header: {
-    backgroundColor: Colors.primary,
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+  stepContainer: {
+    gap: 8,
+    marginBottom: 8,
   },
-  logo: {
-    color: "#fff",
-    fontSize: 28,
-    fontWeight: "700",
-  },
-  subtitle: {
-    color: "#D1D5DB",
-    marginTop: 4,
-    fontSize: 14,
-  },
-  hero: {
-    padding: 15,
-    gap: 12,
-    height: 260,
-    justifyContent: "flex-start",
-  },
-  inputCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 16,
-    marginTop: 8,
-  },
-  label: {
-    color: Colors.subtext,
-    fontSize: 13,
-    marginBottom: 4,
-  },
-  value: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: Colors.text,
-  },
-  content: {
-    padding: 16,
-    marginTop: 10,
-  },
-  sectionTitle: {
-    fontSize: 28,
-    fontWeight: "700",
-    marginBottom: 18,
-    color: Colors.text,
-  },
-  startButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: 14,
-    paddingVertical: 18,
-    alignItems: "center",
-    marginTop: 10,
-    marginBottom: 30,
-  },
-  startButtonText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "700",
+  reactLogo: {
+    height: 178,
+    width: 290,
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
   },
 });
