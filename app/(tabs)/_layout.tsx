@@ -1,51 +1,33 @@
-import { Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from 'expo-router';
+import React from 'react';
+
+import { HapticTab } from '@/components/haptic-tab';
+import { IconSymbol } from '@/components/ui/icon-symbol';
+import { Colors } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function TabLayout() {
+  const colorScheme = useColorScheme();
+
   return (
     <Tabs
       screenOptions={{
+        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarActiveTintColor: "#23395D",
-        tabBarInactiveTintColor: "#9CA3AF",
-        tabBarStyle: {
-          height: 70,
-          paddingBottom: 10,
-          paddingTop: 10,
-        },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: "600",
-        },
-      }}
-    >
+        tabBarButton: HapticTab,
+      }}>
       <Tabs.Screen
         name="index"
         options={{
-          title: "Map",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="map-outline" size={size} color={color} />
-          ),
+          title: 'Home',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
         }}
       />
-
       <Tabs.Screen
-        name="vehicles"
+        name="explore"
         options={{
-          title: "Vehicles",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="car-outline" size={size} color={color} />
-          ),
-        }}
-      />
-
-      <Tabs.Screen
-        name="stats"
-        options={{
-          title: "Stats",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="stats-chart-outline" size={size} color={color} />
-          ),
+          title: 'Explore',
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
         }}
       />
     </Tabs>
