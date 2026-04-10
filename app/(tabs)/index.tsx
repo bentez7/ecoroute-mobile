@@ -1,7 +1,9 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import MapboxGL from '@rnmapbox/maps';
+// import MapboxGL from '@rnmapbox/maps';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { useAuth } from '@/context/auth';
 
 const routeOptions = [
   {
@@ -46,6 +48,8 @@ const metrics = [
 ];
 
 export default function HomeScreen() {
+  const { user, logout } = useAuth();
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -61,17 +65,32 @@ export default function HomeScreen() {
               <Text style={styles.brandSub}>Carbon-smart navigation</Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.tuneBtn}>
-            <MaterialIcons color="#C8D4E4" name="tune" size={20} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {user ? (
+              <View style={styles.userChip}>
+                <MaterialIcons color="#4ADE80" name="person" size={14} />
+                <Text style={styles.userChipText} numberOfLines={1}>
+                  {user.display_name ?? user.email}
+                </Text>
+              </View>
+            ) : null}
+            <TouchableOpacity style={styles.tuneBtn} onPress={logout}>
+              <MaterialIcons color="#C8D4E4" name="logout" size={20} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Map Card */}
         <View style={styles.mapCard}>
+          {/* TODO: uncomment when using dev build
           <MapboxGL.MapView style={styles.map} styleURL={MapboxGL.StyleURL.Street}>
             <MapboxGL.Camera zoomLevel={12} centerCoordinate={[101.6869, 3.139]} />
           </MapboxGL.MapView>
-
+          */}
+          <View style={[styles.map, styles.mapPlaceholder]}>
+            <MaterialIcons color="rgba(255,255,255,0.4)" name="map" size={48} />
+            <Text style={styles.mapPlaceholderText}>Map unavailable in Expo Go</Text>
+          </View>
         </View>
 
         <View style={styles.body}>
@@ -160,6 +179,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  userChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    height: 40,
+    maxWidth: 120,
+  },
+  userChipText: { color: '#4ADE80', fontSize: 12, fontWeight: '700' },
 
   // Map card
   mapCard: {
@@ -171,6 +201,13 @@ const styles = StyleSheet.create({
     height: 220,
   },
   map: { flex: 1 },
+  mapPlaceholder: {
+    backgroundColor: '#2C3E5A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  mapPlaceholderText: { color: 'rgba(255,255,255,0.4)', fontSize: 13 },
   locationBox: {
     backgroundColor: 'rgba(255,255,255,0.95)',
     borderRadius: 14,

@@ -31,6 +31,7 @@ export default {
     plugins: [
       'expo-router',
       'expo-dev-client',
+      'expo-secure-store',
       [
         '@rnmapbox/maps',
         { RNMapboxMapsDownloadToken: process.env.RNMAPBOX_MAPS_DOWNLOAD_TOKEN },
@@ -52,6 +53,7 @@ export default {
     },
     extra: {
       mapboxPublicToken: process.env.MAPBOX_PUBLIC_TOKEN,
+      backendUrl: process.env.BACKEND_URL ?? 'http://localhost:3000/api',
     },
   },
 };
