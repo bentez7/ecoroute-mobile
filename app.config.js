@@ -9,12 +9,13 @@ export default {
     icon: './assets/images/icon.png',
     scheme: 'ecoroutemobile',
     userInterfaceStyle: 'automatic',
-    newArchEnabled: true,
+    newArchEnabled: false,
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.bentez7.ecoroutemobile',
     },
     android: {
+      package: 'com.bentez7.ecoroutemobile',
       adaptiveIcon: {
         backgroundColor: '#E6F4FE',
         foregroundImage: './assets/images/android-icon-foreground.png',
@@ -33,8 +34,29 @@ export default {
       'expo-dev-client',
       'expo-secure-store',
       [
+        'expo-location',
+        {
+          locationWhenInUsePermission:
+            'Allow EcoRoute to use your location for turn-by-turn navigation.',
+        },
+      ],
+      [
         '@rnmapbox/maps',
-        { RNMapboxMapsDownloadToken: process.env.RNMAPBOX_MAPS_DOWNLOAD_TOKEN },
+        {
+          RNMapboxMapsDownloadToken: process.env.RNMAPBOX_MAPS_DOWNLOAD_TOKEN,
+          RNMapboxMapsVersion: '11.11.0',
+        },
+      ],
+      [
+        '@badatgil/expo-mapbox-navigation',
+        {
+          accessToken: process.env.MAPBOX_PUBLIC_TOKEN,
+          mapboxMapsVersion: '11.11.0',
+        },
+      ],
+      [
+        'expo-build-properties',
+        { ios: { useFrameworks: 'static' } },
       ],
       [
         'expo-splash-screen',

@@ -8,6 +8,7 @@ const BASE_URL =
 
 export const api = axios.create({
   baseURL: BASE_URL,
+  timeout: 15000,
   headers: { 'Content-Type': 'application/json' },
 });
 
@@ -68,4 +69,49 @@ export async function signOut(): Promise<void> {
 export async function getMe(): Promise<AuthUser> {
   const { data } = await api.get<{ success: true; data: AuthUser }>('/auth/me');
   return data.data;
+}
+
+// --- Routes ---
+
+export type RouteLabel = 'eco' | 'balanced' | 'fastest';
+
+export interface RouteOption {
+  label: RouteLabel;
+  distance_km: number;
+  duration_sec: number;
+  energy_kwh: number;
+  elevation_gain_km: number;
+  polyline: string;
+  warnings: string[];
+}
+
+export interface RouteSearchParams {
+  origin_lat: number;
+  origin_lng: number;
+  dest_lat: number;
+  dest_lng: number;
+  model_name?: string;
+}
+
+export async function searchRoutes(params: RouteSearchParams): Promise<RouteOption[]> {
+  console.log('[routes/search] →', params);
+  const { data } = await api.post<{ success: true; data: RouteOption[] }>(
+    '/routes/search',
+    params,
+  );
+  const options = data.data;
+  console.log(
+    `[routes/search] ← ${options.length} option(s):`,
+    options.map((o) => ({
+      label: o.label,
+      distance_km: o.distance_km,
+      duration_sec: o.duration_sec,
+      energy_kwh: o.energy_kwh,
+      elevation_gain_km: o.elevation_gain_km,
+      polyline_len: o.polyline.length,
+      polyline_preview: o.polyline.slice(0, 40) + (o.polyline.length > 40 ? '…' : ''),
+      warnings: o.warnings,
+    })),
+  );
+  return options;
 }
