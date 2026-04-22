@@ -13,6 +13,12 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.bentez7.ecoroutemobile',
+      infoPlist: {
+        NSLocationWhenInUseUsageDescription:
+          'EcoRoute uses your location to plan eco-friendly routes and track your trips.',
+        NSLocationAlwaysAndWhenInUseUsageDescription:
+          'EcoRoute uses your location to plan eco-friendly routes and track your trips.',
+      },
     },
     android: {
       adaptiveIcon: {
@@ -23,6 +29,10 @@ export default {
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
+      permissions: [
+        'ACCESS_FINE_LOCATION',
+        'ACCESS_COARSE_LOCATION',
+      ],
     },
     web: {
       output: 'static',

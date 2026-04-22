@@ -1,148 +1,281 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-// import MapboxGL from '@rnmapbox/maps';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import MapboxGL from '@rnmapbox/maps';
+import * as Location from 'expo-location';
+import { useFocusEffect } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/auth';
+import {
+  autocomplete,
+  getTrips,
+  type PlaceSuggestion,
+  type Trip,
+} from '@/lib/api';
 
-const routeOptions = [
-  {
-    id: 'eco',
-    title: 'Eco Route',
-    icon: 'eco',
-    duration: '28 min',
-    distance: '15.2 km',
-    emission: '2.8 kg CO₂',
-    badge: '-35% CO₂',
-    active: true,
-    tint: '#16A34A',
-    surface: '#DCFCE7',
-  },
-  {
-    id: 'fastest',
-    title: 'Fastest Route',
-    icon: 'bolt',
-    duration: '22 min',
-    distance: '18.5 km',
-    emission: '4.3 kg CO₂',
-    tint: '#64748B',
-    surface: '#F1F5F9',
-  },
-  {
-    id: 'shortest',
-    title: 'Shortest Route',
-    icon: 'alt-route',
-    duration: '25 min',
-    distance: '14.8 km',
-    emission: '3.2 kg CO₂',
-    badge: '-25% CO₂',
-    tint: '#7C3AED',
-    surface: '#EDE9FE',
-  },
-];
-
-const metrics = [
-  { label: 'Battery saved', value: '12%' },
-  { label: 'CO₂ this week', value: '18.5 kg' },
-  { label: 'Green trips', value: '09' },
-];
+type RecentPlace = {
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+};
 
 export default function HomeScreen() {
   const { user, logout } = useAuth();
+  const router = useRouter();
+  const cameraRef = useRef<MapboxGL.Camera>(null);
+
+  // Delay map render until screen transition settles
+  const [screenReady, setScreenReady] = useState(false);
+  useFocusEffect(useCallback(() => {
+    const t = setTimeout(() => setScreenReady(true), 100);
+    return () => clearTimeout(t);
+  }, []));
+
+  const KL_DEFAULT: [number, number] = [101.6869, 3.1390];
+  const [userCoords, setUserCoords] = useState<[number, number]>(KL_DEFAULT);
+  const [locationGranted, setLocationGranted] = useState<boolean | null>(null);
+
+  const [destQuery, setDestQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  const [recentPlaces, setRecentPlaces] = useState<RecentPlace[]>([]);
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Request location permission + seed initial position
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setLocationGranted(false);
+          return;
+        }
+        setLocationGranted(true);
+        const pos = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        setUserCoords([pos.coords.longitude, pos.coords.latitude]);
+      } catch {
+        setLocationGranted(false);
+      }
+    })();
+  }, []);
+
+  const openSettings = useCallback(() => {
+    Alert.alert(
+      'Location needed',
+      'EcoRoute needs location access to plan routes from where you are. Open settings to enable it?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Open Settings', onPress: () => Linking.openSettings() },
+      ],
+    );
+  }, []);
+
+  // Load recent trip destinations
+  useFocusEffect(useCallback(() => {
+    getTrips()
+      .then((trips: Trip[]) => {
+        const seen = new Set<string>();
+        const recent: RecentPlace[] = [];
+        for (const t of trips) {
+          const key = `${t.dest_lat.toFixed(4)},${t.dest_lng.toFixed(4)}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          recent.push({
+            name:    t.dest_address?.split(',')[0] ?? 'Destination',
+            address: t.dest_address ?? `${t.dest_lat.toFixed(4)}, ${t.dest_lng.toFixed(4)}`,
+            lat:     t.dest_lat,
+            lng:     t.dest_lng,
+          });
+          if (recent.length >= 5) break;
+        }
+        setRecentPlaces(recent);
+      })
+      .catch(() => {});
+  }, []));
+
+  // Debounced autocomplete
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (destQuery.length < 2) { setSuggestions([]); return; }
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        setLoadingSuggestions(true);
+        const results = await autocomplete(destQuery, userCoords[1], userCoords[0]);
+        setSuggestions(results);
+      } catch {
+        setSuggestions([]);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    }, 350);
+
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [destQuery, userCoords]);
+
+  const goToRouteSelect = useCallback((p: { name: string; address: string; lat: number; lng: number }) => {
+    router.push({
+      pathname: '/route-select',
+      params: {
+        destName:    p.name,
+        destAddress: p.address,
+        destLat:     String(p.lat),
+        destLng:     String(p.lng),
+        originLat:   String(userCoords[1]),
+        originLng:   String(userCoords[0]),
+      },
+    });
+  }, [router, userCoords]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView showsVerticalScrollIndicator={false}>
-
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.brandRow}>
-            <View style={styles.logoBadge}>
-              <MaterialIcons color="#FFFFFF" name="navigation" size={18} />
-            </View>
-            <View>
-              <Text style={styles.brandTitle}>EcoRoute</Text>
-              <Text style={styles.brandSub}>Carbon-smart navigation</Text>
-            </View>
-          </View>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {user ? (
-              <View style={styles.userChip}>
-                <MaterialIcons color="#4ADE80" name="person" size={14} />
-                <Text style={styles.userChipText} numberOfLines={1}>
-                  {user.display_name ?? user.email}
-                </Text>
-              </View>
-            ) : null}
-            <TouchableOpacity style={styles.tuneBtn} onPress={logout}>
-              <MaterialIcons color="#C8D4E4" name="logout" size={20} />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Map Card */}
-        <View style={styles.mapCard}>
-          {/* TODO: uncomment when using dev build
-          <MapboxGL.MapView style={styles.map} styleURL={MapboxGL.StyleURL.Street}>
-            <MapboxGL.Camera zoomLevel={12} centerCoordinate={[101.6869, 3.139]} />
-          </MapboxGL.MapView>
-          */}
-          <View style={[styles.map, styles.mapPlaceholder]}>
-            <MaterialIcons color="rgba(255,255,255,0.4)" name="map" size={48} />
-            <Text style={styles.mapPlaceholderText}>Map unavailable in Expo Go</Text>
-          </View>
-        </View>
-
-        <View style={styles.body}>
-
-          {/* Route Options */}
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Choose Your Route</Text>
-            <Text style={styles.sectionHint}>3 options</Text>
-          </View>
-
-          {routeOptions.map((route) => (
-            <TouchableOpacity
-              key={route.id}
-              activeOpacity={0.85}
-              style={[styles.routeCard, route.active && styles.routeCardActive]}>
-              <View style={[styles.routeIcon, { backgroundColor: route.surface }]}>
-                <MaterialIcons color={route.tint} name={route.icon as never} size={22} />
-              </View>
-              <View style={styles.routeBody}>
-                <View style={styles.routeTopRow}>
-                  <Text style={styles.routeTitle}>{route.title}</Text>
-                  {route.badge && (
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>{route.badge}</Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={styles.routeMeta}>
-                  {route.duration}  ·  {route.distance}  ·  {route.emission}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-
-          {/* Metrics */}
-          <View style={styles.metricsRow}>
-            {metrics.map((m) => (
-              <View key={m.label} style={styles.metricCard}>
-                <Text style={styles.metricValue}>{m.value}</Text>
-                <Text style={styles.metricLabel}>{m.label}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* CTA */}
-          <TouchableOpacity activeOpacity={0.9} style={styles.ctaBtn}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.brandRow}>
+          <View style={styles.logoBadge}>
             <MaterialIcons color="#FFFFFF" name="navigation" size={18} />
-            <Text style={styles.ctaText}>Start Navigation</Text>
-          </TouchableOpacity>
-
+          </View>
+          <View>
+            <Text style={styles.brandTitle}>EcoRoute</Text>
+            <Text style={styles.brandSub}>Carbon-smart navigation</Text>
+          </View>
         </View>
-      </ScrollView>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          {user && (
+            <View style={styles.userChip}>
+              <MaterialIcons color="#4ADE80" name="person" size={14} />
+              <Text style={styles.userChipText} numberOfLines={1}>
+                {user.display_name ?? user.email}
+              </Text>
+            </View>
+          )}
+          <TouchableOpacity style={styles.iconBtn} onPress={logout}>
+            <MaterialIcons color="#C8D4E4" name="logout" size={20} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Map */}
+      <View style={styles.mapCard}>
+        {screenReady && (
+          <MapboxGL.MapView style={styles.map} styleURL={MapboxGL.StyleURL.Street}>
+            <MapboxGL.Camera ref={cameraRef} followUserLocation followZoomLevel={14} />
+            <MapboxGL.UserLocation
+              visible
+              onUpdate={(loc) => setUserCoords([loc.coords.longitude, loc.coords.latitude])}
+            />
+          </MapboxGL.MapView>
+        )}
+      </View>
+
+      {/* Search panel */}
+      <View style={styles.panel}>
+        {locationGranted === false && (
+          <TouchableOpacity style={styles.permissionBanner} onPress={openSettings}>
+            <MaterialIcons color="#B45309" name="location-off" size={18} />
+            <Text style={styles.permissionText} numberOfLines={2}>
+              Location access denied — tap to enable in Settings. Routes will use Kuala Lumpur as fallback.
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        <View style={styles.searchBar}>
+          <MaterialIcons color="#6B7280" name="search" size={20} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Where to?"
+            placeholderTextColor="#9CA3AF"
+            value={destQuery}
+            onChangeText={setDestQuery}
+            returnKeyType="search"
+          />
+          {loadingSuggestions && <ActivityIndicator size="small" color="#6B7280" />}
+        </View>
+
+        <ScrollView
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Autocomplete results */}
+          {suggestions.length > 0 && (
+            <View style={styles.listCard}>
+              {suggestions.map((s, i) => (
+                <TouchableOpacity
+                  key={s.place_id ?? i}
+                  style={[styles.row, i < suggestions.length - 1 && styles.rowBorder]}
+                  onPress={() => goToRouteSelect({
+                    name:    s.name,
+                    address: s.full_address,
+                    lat:     s.lat,
+                    lng:     s.lng,
+                  })}
+                >
+                  <View style={styles.rowIcon}>
+                    <MaterialIcons color="#6B7280" name="place" size={18} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.rowTitle} numberOfLines={1}>{s.name}</Text>
+                    <Text style={styles.rowSub} numberOfLines={1}>{s.full_address}</Text>
+                  </View>
+                  <MaterialIcons color="#9CA3AF" name="chevron-right" size={22} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Recent trips — only when not searching */}
+          {destQuery.length < 2 && recentPlaces.length > 0 && (
+            <>
+              <Text style={styles.sectionLabel}>Recent</Text>
+              <View style={styles.listCard}>
+                {recentPlaces.map((p, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={[styles.row, i < recentPlaces.length - 1 && styles.rowBorder]}
+                    onPress={() => goToRouteSelect(p)}
+                  >
+                    <View style={[styles.rowIcon, { backgroundColor: '#EFF6FF' }]}>
+                      <MaterialIcons color="#3B82F6" name="history" size={18} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.rowTitle} numberOfLines={1}>{p.name}</Text>
+                      <Text style={styles.rowSub} numberOfLines={1}>{p.address}</Text>
+                    </View>
+                    <MaterialIcons color="#9CA3AF" name="chevron-right" size={22} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
+
+          {destQuery.length < 2 && recentPlaces.length === 0 && (
+            <View style={styles.emptyBox}>
+              <MaterialIcons color="#CBD5E1" name="explore" size={40} />
+              <Text style={styles.emptyText}>Search for a destination to start planning an eco-friendly route.</Text>
+            </View>
+          )}
+
+          <View style={{ height: 24 }} />
+        </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -150,169 +283,108 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#1B2B45' },
 
-  // Header
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 8,
-    paddingBottom: 20,
+    paddingBottom: 14,
     backgroundColor: '#1B2B45',
   },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  brandRow:  { flexDirection: 'row', alignItems: 'center', gap: 12 },
   logoBadge: {
     backgroundColor: 'rgba(255,255,255,0.12)',
     borderRadius: 12,
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 36, height: 36,
+    alignItems: 'center', justifyContent: 'center',
   },
   brandTitle: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', letterSpacing: -0.4 },
-  brandSub: { color: 'rgba(255,255,255,0.55)', fontSize: 13, marginTop: 1 },
-  tuneBtn: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 12,
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  brandSub:   { color: 'rgba(255,255,255,0.55)', fontSize: 13, marginTop: 1 },
   userChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
+    flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    height: 40,
-    maxWidth: 120,
+    borderRadius: 12, paddingHorizontal: 10, height: 40, maxWidth: 120,
   },
   userChipText: { color: '#4ADE80', fontSize: 12, fontWeight: '700' },
+  iconBtn: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12, width: 40, height: 40,
+    alignItems: 'center', justifyContent: 'center',
+  },
 
-  // Map card
   mapCard: {
     marginHorizontal: 16,
-    borderRadius: 24,
+    borderRadius: 20,
+    overflow: 'hidden',
+    height: 260,
     marginBottom: -20,
     zIndex: 1,
-    overflow: 'hidden',
-    height: 220,
   },
   map: { flex: 1 },
-  mapPlaceholder: {
-    backgroundColor: '#2C3E5A',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  mapPlaceholderText: { color: 'rgba(255,255,255,0.4)', fontSize: 13 },
-  locationBox: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  locationLabel: { color: '#6B7280', fontSize: 12, marginBottom: 4 },
-  locationRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  dot: { width: 10, height: 10, borderRadius: 5 },
-  locationText: { color: '#111827', fontSize: 16, fontWeight: '700', flex: 1 },
 
-  // Body
-  body: {
+  panel: {
     backgroundColor: '#F4F5F7',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 36,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingTop: 20,
     paddingHorizontal: 16,
-    paddingBottom: 40,
-  },
-
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  sectionTitle: { fontSize: 20, fontWeight: '800', color: '#111827', letterSpacing: -0.3 },
-  sectionHint: { fontSize: 13, color: '#6B7280', fontWeight: '600' },
-
-  // Route cards
-  routeCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  routeCardActive: {
-    borderColor: '#1B2B45',
-    borderWidth: 2,
-    shadowColor: '#1B2B45',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  routeIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 14,
-  },
-  routeBody: { flex: 1 },
-  routeTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  routeTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
-  badge: {
-    backgroundColor: '#DCFCE7',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  badgeText: { color: '#16A34A', fontSize: 12, fontWeight: '700' },
-  routeMeta: { color: '#6B7280', fontSize: 13, fontWeight: '500' },
-
-  // Metrics
-  metricsRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  metricCard: {
     flex: 1,
+  },
+
+  permissionBanner: {
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  permissionText: {
+    flex: 1, color: '#92400E', fontSize: 13, fontWeight: '600',
+  },
+
+  searchBar: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 14,
-    alignItems: 'flex-start',
-    shadowColor: '#000',
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  metricValue: { fontSize: 20, fontWeight: '800', color: '#111827', marginBottom: 4 },
-  metricLabel: { fontSize: 11, color: '#6B7280', lineHeight: 15 },
-
-  // CTA
-  ctaBtn: {
-    backgroundColor: '#1B2B45',
-    borderRadius: 18,
-    height: 56,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 10,
+    paddingHorizontal: 14,
+    height: 52,
+    marginBottom: 16,
+    shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 8, elevation: 3,
   },
-  ctaText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800', letterSpacing: -0.2 },
+  searchInput: { flex: 1, fontSize: 15, color: '#111827', fontWeight: '600', padding: 0 },
+
+  sectionLabel: {
+    fontSize: 12, fontWeight: '700', color: '#6B7280',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+    marginBottom: 8, marginLeft: 4,
+  },
+
+  listCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    marginBottom: 16,
+    overflow: 'hidden',
+    shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 8, elevation: 2,
+  },
+  row: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
+  rowBorder: { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  rowIcon: {
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: '#F9FAFB',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  rowTitle: { fontSize: 15, fontWeight: '700', color: '#111827' },
+  rowSub:   { fontSize: 12, color: '#6B7280', marginTop: 2 },
+
+  emptyBox: {
+    alignItems: 'center', padding: 32, gap: 10,
+  },
+  emptyText: {
+    color: '#64748B', fontSize: 14, textAlign: 'center', lineHeight: 20,
+  },
 });
