@@ -15,6 +15,10 @@ export default {
       bundleIdentifier: 'com.bentez7.ecoroutemobile',
       infoPlist: {
         UIBackgroundModes: ['location', 'fetch'],
+        NSLocationWhenInUseUsageDescription:
+          'EcoRoute uses your location to plan eco-friendly routes and track your trips.',
+        NSLocationAlwaysAndWhenInUseUsageDescription:
+          'EcoRoute uses your location to plan eco-friendly routes and track your trips.',
       },
     },
     android: {
@@ -27,6 +31,10 @@ export default {
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
+      permissions: [
+        'ACCESS_FINE_LOCATION',
+        'ACCESS_COARSE_LOCATION',
+      ],
     },
     web: {
       output: 'static',

@@ -2,6 +2,8 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import MapboxGL from '@rnmapbox/maps';
 import Constants from 'expo-constants';
 import { Stack } from 'expo-router';
+
+MapboxGL.setAccessToken(Constants.expoConfig?.extra?.mapboxPublicToken ?? '');
 import { StatusBar } from 'expo-status-bar';
 import * as SecureStore from 'expo-secure-store';
 import { useEffect } from 'react';
@@ -81,6 +83,7 @@ export default function RootLayout() {
           <Stack>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+            <Stack.Screen name="route-select" options={{ headerShown: false }} />
             <Stack.Screen
               name="navigate"
               options={{ headerShown: false, animation: 'slide_from_bottom' }}
