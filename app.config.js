@@ -9,10 +9,13 @@ export default {
     icon: './assets/images/icon.png',
     scheme: 'ecoroutemobile',
     userInterfaceStyle: 'automatic',
-    newArchEnabled: false,
+    newArchEnabled: true,
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.bentez7.ecoroutemobile',
+      infoPlist: {
+        UIBackgroundModes: ['location', 'fetch'],
+      },
     },
     android: {
       package: 'com.bentez7.ecoroutemobile',
@@ -33,11 +36,17 @@ export default {
       'expo-router',
       'expo-dev-client',
       'expo-secure-store',
+      'expo-task-manager',
+      'expo-sqlite',
       [
         'expo-location',
         {
           locationWhenInUsePermission:
             'Allow EcoRoute to use your location for turn-by-turn navigation.',
+          locationAlwaysAndWhenInUsePermission:
+            'Allow EcoRoute to track your trip in the background to record telemetry.',
+          isIosBackgroundLocationEnabled: true,
+          isAndroidBackgroundLocationEnabled: true,
         },
       ],
       [
@@ -76,6 +85,10 @@ export default {
     extra: {
       mapboxPublicToken: process.env.MAPBOX_PUBLIC_TOKEN,
       backendUrl: process.env.BACKEND_URL ?? 'http://localhost:3000/api',
+      supabaseUrl: process.env.SUPABASE_URL,
+      supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
+      vehicleId: process.env.VEHICLE_ID,
+      fuelType: process.env.FUEL_TYPE ?? 'petrol',
     },
   },
 };

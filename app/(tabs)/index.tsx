@@ -123,9 +123,12 @@ export default function HomeScreen() {
         label: selected.label,
         destLat: String(parts[0]),
         destLng: String(parts[1]),
+        originLat: origin ? String(origin.lat) : '',
+        originLng: origin ? String(origin.lng) : '',
+        destAddress: destInput,
       },
     });
-  }, [routes, selectedLabel, destInput, router]);
+  }, [routes, selectedLabel, destInput, router, origin]);
 
   const hasRoutes = routes.length > 0;
 

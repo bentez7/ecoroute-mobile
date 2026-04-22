@@ -1,0 +1,25 @@
+diff --git a/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationView.swift b/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationView.swift
+index 8f841df..af8f2e0 100644
+--- a/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationView.swift
++++ b/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationView.swift
+@@ -348,10 +348,19 @@ class ExpoMapboxNavigationViewController: UIViewController {
+     }
+ 
+     func calculateMapMatchingRoutes(waypoints: Array<Waypoint>){
++        let separatorIndices = waypoints.enumerated()
++            .filter { $0.element.separatesLegs }
++            .map { String($0.offset) }
++        var queryItems: [URLQueryItem] = [
++            URLQueryItem(name: "exclude", value: currentRouteExcludeList?.joined(separator: ","))
++        ]
++        if !separatorIndices.isEmpty && separatorIndices.count < waypoints.count {
++            queryItems.append(URLQueryItem(name: "waypoints", value: separatorIndices.joined(separator: ";")))
++        }
+         let matchOptions = NavigationMatchOptions(
+             waypoints: waypoints,
+             profileIdentifier: currentRouteProfile != nil ? ProfileIdentifier(rawValue: currentRouteProfile!) : nil,
+-            queryItems: [URLQueryItem(name: "exclude", value: currentRouteExcludeList?.joined(separator: ","))],
++            queryItems: queryItems,
+             distanceUnit: currentLocale.usesMetricSystem ? LengthFormatter.Unit.meter : LengthFormatter.Unit.mile
+         )
+         matchOptions.locale = currentLocale

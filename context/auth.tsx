@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { useRouter, useSegments } from 'expo-router';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 
 import { AuthUser, getMe, signIn, signOut, signUp } from '@/lib/api';
 
@@ -83,7 +84,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
-      {children}
+      {isLoading ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1B2B45' }}>
+          <ActivityIndicator color="#FFFFFF" />
+        </View>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 }

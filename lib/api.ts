@@ -115,3 +115,143 @@ export async function searchRoutes(params: RouteSearchParams): Promise<RouteOpti
   );
   return options;
 }
+
+// --- Trips ---
+
+export type TripStatus = 'active' | 'ended' | 'cancelled';
+export type DriverProfile = 'smooth' | 'normal' | 'aggressive';
+export type FuelType = 'petrol' | 'diesel' | 'lpg' | 'ev';
+
+export interface Trip {
+  id: string;
+  status: TripStatus;
+  vehicle_id: string;
+  started_at: string;
+  ended_at: string | null;
+  origin_lat: number;
+  origin_lng: number;
+  origin_address: string | null;
+  dest_lat: number;
+  dest_lng: number;
+  dest_address: string | null;
+  route_polyline: string | null;
+  fuel_type: FuelType;
+  distance_km: number | null;
+  duration_sec: number | null;
+  energy_kwh: number | null;
+  co2_kg: number | null;
+  driver_profile: DriverProfile | null;
+  excess_vs_optimal_pct: number | null;
+}
+
+export interface CreateTripBody {
+  vehicle_id: string;
+  started_at: string;
+  origin_lat: number;
+  origin_lng: number;
+  origin_address?: string;
+  dest_lat: number;
+  dest_lng: number;
+  dest_address?: string;
+  route_polyline?: string;
+  fuel_type: FuelType;
+}
+
+export async function createTrip(body: CreateTripBody): Promise<Trip> {
+  console.log('[trips] create →', { vehicle_id: body.vehicle_id, fuel_type: body.fuel_type });
+  const { data } = await api.post<{ success: true; data: Trip }>('/trips', body);
+  console.log('[trips] create ←', data.data.id, data.data.status);
+  return data.data;
+}
+
+export async function endTrip(
+  id: string,
+  body: { ended_at: string; distance_km: number; duration_sec: number },
+): Promise<Trip> {
+  console.log('[trips] end →', id, body);
+  const { data } = await api.patch<{ success: true; data: Trip }>(`/trips/${id}/end`, body);
+  return data.data;
+}
+
+export async function cancelTrip(id: string): Promise<Trip> {
+  console.log('[trips] cancel →', id);
+  const { data } = await api.patch<{ success: true; data: Trip }>(`/trips/${id}/cancel`, {});
+  return data.data;
+}
+
+export async function getTrip(id: string): Promise<Trip> {
+  const { data } = await api.get<{ success: true; data: Trip }>(`/trips/${id}`);
+  return data.data;
+}
+
+// --- Telemetry ---
+
+export interface TelemetryPoint {
+  recorded_at: string;
+  lat: number;
+  lng: number;
+  speed_ms?: number | null;
+  accel_ms2?: number | null;
+  altitude_m?: number | null;
+  heading_deg?: number | null;
+}
+
+export class TripInactiveError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TripInactiveError';
+  }
+}
+
+export async function postTelemetry(
+  trip_id: string,
+  points: TelemetryPoint[],
+): Promise<{ inserted: number }> {
+  try {
+    const { data } = await api.post<{ success: true; data: { inserted: number } }>(
+      '/telemetry',
+      { trip_id, points },
+    );
+    return data.data;
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number } })?.response?.status;
+    const msg =
+      (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+      (err as Error)?.message ??
+      'Telemetry POST failed';
+    if (status === 409) throw new TripInactiveError(msg);
+    throw err;
+  }
+}
+
+// --- Feedback ---
+
+export type FeedbackEventType =
+  | 'hard_braking'
+  | 'speeding'
+  | 'idling'
+  | 'aggressive_accel'
+  | 'eco_praise';
+export type FeedbackSeverity = 'info' | 'warning' | 'critical';
+
+export interface FeedbackEvent {
+  id: string;
+  trip_id: string;
+  segment_id: string | null;
+  event_type: FeedbackEventType;
+  severity: FeedbackSeverity;
+  message: string;
+  acknowledged: boolean;
+  created_at: string;
+}
+
+export async function acknowledgeFeedback(id: string): Promise<void> {
+  await api.patch(`/feedback/${id}/acknowledge`, {});
+}
+
+export async function getFeedbackForTrip(trip_id: string): Promise<FeedbackEvent[]> {
+  const { data } = await api.get<{ success: true; data: FeedbackEvent[] }>(
+    `/feedback/trip/${trip_id}`,
+  );
+  return data.data;
+}

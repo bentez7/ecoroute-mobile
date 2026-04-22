@@ -9,11 +9,14 @@
 
 import { MapboxNavigationView } from '@badatgil/expo-mapbox-navigation';
 import { useRouter } from 'expo-router';
-import { useMemo } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import * as Location from 'expo-location';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
+import { FeedbackBanner } from '@/components/feedback-banner';
+import { useActiveTrip } from '@/context/active-trip';
 import {
   decode,
   haversineMeters,
@@ -28,6 +31,9 @@ const MAP_MATCHING_MAX_COORDS = 25;
 
 export default function DevNavigateScreen() {
   const router = useRouter();
+  const { tripId, start, end, cancel, feedback, dismissFeedback } = useActiveTrip();
+  const tripStartAttemptedRef = useRef(false);
+  const arrivedRef = useRef(false);
 
   const coordinates = useMemo(() => {
     const decoded = decode(HARDCODED_ECO_POLYLINE);
@@ -46,6 +52,60 @@ export default function DevNavigateScreen() {
     );
   }, [coordinates]);
 
+  useEffect(() => {
+    if (!valid) return;
+    if (tripStartAttemptedRef.current) return;
+    tripStartAttemptedRef.current = true;
+
+    (async () => {
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          await Location.requestForegroundPermissionsAsync();
+        }
+        const first = coordinates[0];
+        const last = coordinates[coordinates.length - 1];
+        await start({
+          originLat: first.latitude,
+          originLng: first.longitude,
+          destLat: last.latitude,
+          destLng: last.longitude,
+          routePolyline: HARDCODED_ECO_POLYLINE,
+        });
+      } catch (err) {
+        console.warn('[dev-navigate] start trip failed', (err as Error).message);
+      }
+    })();
+  }, [valid, coordinates, start]);
+
+  useEffect(() => {
+    return () => {
+      if (!arrivedRef.current && tripId) {
+        void cancel();
+      }
+    };
+  }, [tripId, cancel]);
+
+  const handleArrival = useCallback(async () => {
+    arrivedRef.current = true;
+    try {
+      await end();
+    } catch (err) {
+      console.warn('[dev-navigate] end failed', (err as Error).message);
+    }
+    router.back();
+  }, [end, router]);
+
+  const handleCancel = useCallback(async () => {
+    arrivedRef.current = true;
+    try {
+      await cancel();
+    } catch (err) {
+      console.warn('[dev-navigate] cancel failed', (err as Error).message);
+    }
+    router.back();
+  }, [cancel, router]);
+
   if (!valid) {
     return (
       <SafeAreaView style={styles.errorWrap}>
@@ -59,17 +119,20 @@ export default function DevNavigateScreen() {
   }
 
   return (
-    <MapboxNavigationView
-      style={StyleSheet.absoluteFill}
-      coordinates={coordinates}
-      waypointIndices={[0, coordinates.length - 1]}
-      useRouteMatchingApi
-      onFinalDestinationArrival={() => router.back()}
-      onCancelNavigation={() => router.back()}
-      onRouteFailedToLoad={(evt) =>
-        console.warn('[dev-navigate] route failed', evt.nativeEvent.errorMessage)
-      }
-    />
+    <View style={StyleSheet.absoluteFill}>
+      <MapboxNavigationView
+        style={StyleSheet.absoluteFill}
+        coordinates={coordinates}
+        waypointIndices={[0, coordinates.length - 1]}
+        useRouteMatchingApi
+        onFinalDestinationArrival={handleArrival}
+        onCancelNavigation={handleCancel}
+        onRouteFailedToLoad={(evt) =>
+          console.warn('[dev-navigate] route failed', evt.nativeEvent.errorMessage)
+        }
+      />
+      <FeedbackBanner items={feedback} onDismiss={dismissFeedback} />
+    </View>
   );
 }
 

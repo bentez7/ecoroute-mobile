@@ -7,6 +7,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
+import { FeedbackBanner } from '@/components/feedback-banner';
+import { useActiveTrip } from '@/context/active-trip';
 import { searchRoutes, type RouteLabel } from '@/lib/api';
 import {
   decode,
@@ -41,6 +43,10 @@ export default function NavigateScreen() {
     label: RouteLabel;
     destLat: string;
     destLng: string;
+    originLat?: string;
+    originLng?: string;
+    destAddress?: string;
+    originAddress?: string;
   }>();
 
   const decoded = useMemo(() => decode(params.polyline ?? ''), [params.polyline]);
@@ -59,14 +65,52 @@ export default function NavigateScreen() {
   const replanCountRef = useRef(0);
   const replanningRef = useRef(false);
 
+  const { tripId, start, end, cancel, feedback, dismissFeedback } = useActiveTrip();
+  const tripStartAttemptedRef = useRef(false);
+  const arrivedRef = useRef(false);
+
   useEffect(() => {
+    if (!isValid || coordinates.length < 2) return;
+    if (tripStartAttemptedRef.current) return;
+    tripStartAttemptedRef.current = true;
+
     (async () => {
-      const { status } = await Location.getForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        await Location.requestForegroundPermissionsAsync();
+      try {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          await Location.requestForegroundPermissionsAsync();
+        }
+        const loc = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        }).catch(() => null);
+
+        const originLat = loc?.coords.latitude ?? Number(params.originLat) ?? coordinates[0].latitude;
+        const originLng = loc?.coords.longitude ?? Number(params.originLng) ?? coordinates[0].longitude;
+
+        await start({
+          originLat,
+          originLng,
+          destLat: dest.lat,
+          destLng: dest.lng,
+          originAddress: params.originAddress,
+          destAddress: params.destAddress,
+          routePolyline: params.polyline,
+        });
+      } catch (err) {
+        console.warn('[navigate] start trip failed', (err as Error).message);
       }
     })();
-  }, []);
+  }, [isValid, coordinates, dest, params, start]);
+
+  useEffect(() => {
+    return () => {
+      // If user backed out of the screen without arrival/cancel buttons firing,
+      // ensure the trip is cancelled to avoid orphans.
+      if (!arrivedRef.current && tripId) {
+        void cancel();
+      }
+    };
+  }, [tripId, cancel]);
 
   const handleOffRoute = useCallback(async () => {
     if (replanningRef.current) return;
@@ -101,19 +145,52 @@ export default function NavigateScreen() {
     }
   }, [dest, params.label]);
 
-  const handleArrival = useCallback(() => {
+  const handleArrival = useCallback(async () => {
+    arrivedRef.current = true;
+    try {
+      await end();
+    } catch (err) {
+      console.warn('[navigate] end trip failed', (err as Error).message);
+    }
     router.back();
-  }, [router]);
+  }, [end, router]);
 
-  const handleCancel = useCallback(() => {
+  const handleCancel = useCallback(async () => {
+    arrivedRef.current = true;
+    try {
+      await cancel();
+    } catch (err) {
+      console.warn('[navigate] cancel trip failed', (err as Error).message);
+    }
     router.back();
-  }, [router]);
+  }, [cancel, router]);
 
   const handleRouteFailed = useCallback(
     (evt: { nativeEvent: { errorMessage: string } }) => {
       console.warn('[navigate] route failed to load', evt.nativeEvent.errorMessage);
     },
     [],
+  );
+
+  const handleRoutesLoaded = useCallback(() => {
+    console.log('[navigate] routes loaded');
+  }, []);
+
+  const initialLocation = useMemo(() => {
+    const lat = Number(params.originLat);
+    const lng = Number(params.originLng);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return { latitude: lat, longitude: lng, zoom: 15 };
+    }
+    if (coordinates.length > 0) {
+      return { latitude: coordinates[0].latitude, longitude: coordinates[0].longitude, zoom: 15 };
+    }
+    return undefined;
+  }, [params.originLat, params.originLng, coordinates]);
+
+  const waypointIndices = useMemo(
+    () => [0, coordinates.length - 1],
+    [coordinates.length],
   );
 
   if (!isValid || coordinates.length < 2) {
@@ -125,7 +202,7 @@ export default function NavigateScreen() {
           The route returned by the server is too short to navigate.
           Please try a different destination.
         </Text>
-        <Pressable style={styles.errorBtn} onPress={handleCancel}>
+        <Pressable style={styles.errorBtn} onPress={() => router.back()}>
           <Text style={styles.errorBtnText}>Go back</Text>
         </Pressable>
       </SafeAreaView>
@@ -133,16 +210,21 @@ export default function NavigateScreen() {
   }
 
   return (
-    <MapboxNavigationView
-      style={StyleSheet.absoluteFill}
-      coordinates={coordinates}
-      waypointIndices={[0, coordinates.length - 1]}
-      useRouteMatchingApi
-      onUserOffRoute={handleOffRoute}
-      onFinalDestinationArrival={handleArrival}
-      onCancelNavigation={handleCancel}
-      onRouteFailedToLoad={handleRouteFailed}
-    />
+    <View style={StyleSheet.absoluteFill}>
+      <MapboxNavigationView
+        style={StyleSheet.absoluteFill}
+        coordinates={coordinates}
+        waypointIndices={waypointIndices}
+        useRouteMatchingApi
+        initialLocation={initialLocation}
+        onUserOffRoute={handleOffRoute}
+        onFinalDestinationArrival={handleArrival}
+        onCancelNavigation={handleCancel}
+        onRouteFailedToLoad={handleRouteFailed}
+        onRoutesLoaded={handleRoutesLoaded}
+      />
+      <FeedbackBanner items={feedback} onDismiss={dismissFeedback} />
+    </View>
   );
 }
 
