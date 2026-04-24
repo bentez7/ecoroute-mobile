@@ -61,14 +61,14 @@ export default {
         '@rnmapbox/maps',
         {
           RNMapboxMapsDownloadToken: process.env.RNMAPBOX_MAPS_DOWNLOAD_TOKEN,
-          RNMapboxMapsVersion: '11.11.0',
+          RNMapboxMapsVersion: '~> 10.19.0',
         },
       ],
       [
         '@badatgil/expo-mapbox-navigation',
         {
           accessToken: process.env.MAPBOX_PUBLIC_TOKEN,
-          mapboxMapsVersion: '11.11.0',
+          mapboxMapsVersion: '~> 10.19.0',
         },
       ],
       [
