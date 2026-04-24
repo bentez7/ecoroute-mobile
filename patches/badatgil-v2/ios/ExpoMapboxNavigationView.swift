@@ -191,18 +191,36 @@ class ExpoMapboxNavigationViewController: UIViewController {
     }
 
     private func present(response: RouteResponse) {
-        let indexed = IndexedRouteResponse(routeResponse: response, routeIndex: 0)
+        let routeCount = response.routes?.count ?? 0
+        let optsKind: String = {
+            switch response.options {
+            case .route:  return "route"
+            case .match:  return "match"
+            }
+        }()
+        NSLog("[ExpoMapboxNavigation] present: routes=\(routeCount) optionsKind=\(optsKind)")
 
-        if let route = response.routes?.first {
-            onRoutesLoaded?([
-                "routes": [
-                    "mainRoute": convertRoute(route: route),
-                    "alternativeRoutes": [],
-                ]
-            ])
+        guard let routes = response.routes, !routes.isEmpty else {
+            NSLog("[ExpoMapboxNavigation] present: empty routes — aborting")
+            onRouteFailedToLoad?(["errorMessage": "No routes returned from Mapbox"])
+            return
         }
 
+        let firstRoute = routes[0]
+        NSLog("[ExpoMapboxNavigation] present: route0 distance=\(firstRoute.distance) legs=\(firstRoute.legs.count)")
+
+        let indexed = IndexedRouteResponse(routeResponse: response, routeIndex: 0)
+        NSLog("[ExpoMapboxNavigation] present: built IndexedRouteResponse")
+
+        onRoutesLoaded?([
+            "routes": [
+                "mainRoute": convertRoute(route: firstRoute),
+                "alternativeRoutes": [],
+            ]
+        ])
+
         let nv = NavigationViewController(for: indexed, navigationOptions: nil)
+        NSLog("[ExpoMapboxNavigation] present: built NavigationViewController")
         nv.delegate = self
         nv.voiceController.speechSynthesizer.muted = muted
         navigationViewController = nv
