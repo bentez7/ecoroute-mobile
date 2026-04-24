@@ -48,6 +48,8 @@ interface StartTripArgs {
   originAddress?: string;
   destAddress?: string;
   routePolyline?: string;
+  vehicleId?: string;
+  fuelType?: string;
 }
 
 interface ActiveTripContextValue {
@@ -200,12 +202,16 @@ export function ActiveTripProvider({ children }: { children: React.ReactNode }) 
       if (tripIdRef.current) {
         throw new Error('A trip is already active.');
       }
-      const vehicleId = Constants.expoConfig?.extra?.vehicleId as string | undefined;
+      const vehicleId =
+        args.vehicleId ??
+        (Constants.expoConfig?.extra?.vehicleId as string | undefined);
       const fuelType =
-        (Constants.expoConfig?.extra?.fuelType as FuelType | undefined) ?? 'petrol';
+        args.fuelType ??
+        (Constants.expoConfig?.extra?.fuelType as FuelType | undefined) ??
+        'petrol';
       if (!vehicleId) {
         throw new Error(
-          'VEHICLE_ID not set in .env. Add it before starting a trip.',
+          'No vehicle selected and VEHICLE_ID not set in .env.',
         );
       }
 

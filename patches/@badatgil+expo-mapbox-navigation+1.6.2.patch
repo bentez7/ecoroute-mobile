@@ -1,8 +1,150 @@
+diff --git a/node_modules/@badatgil/expo-mapbox-navigation/build/index.d.ts b/node_modules/@badatgil/expo-mapbox-navigation/build/index.d.ts
+index 1345722..9bfc1d1 100644
+--- a/node_modules/@badatgil/expo-mapbox-navigation/build/index.d.ts
++++ b/node_modules/@badatgil/expo-mapbox-navigation/build/index.d.ts
+@@ -1,4 +1,5 @@
+ import MapboxNavigationView from "./ExpoMapboxNavigationView";
+ import { ExpoMapboxNavigationViewProps, ExpoMapboxNavigationViewRef } from "./ExpoMapboxNavigation.types";
++export declare function setCurrentDirectionsJson(json: Record<string, unknown> | null): Promise<void>;
+ export { MapboxNavigationView, ExpoMapboxNavigationViewProps as MapboxNavigationViewProps, ExpoMapboxNavigationViewRef as MapboxNavigationViewRef, };
+ //# sourceMappingURL=index.d.ts.map
+diff --git a/node_modules/@badatgil/expo-mapbox-navigation/build/index.js b/node_modules/@badatgil/expo-mapbox-navigation/build/index.js
+index d021516..9684f9a 100644
+--- a/node_modules/@badatgil/expo-mapbox-navigation/build/index.js
++++ b/node_modules/@badatgil/expo-mapbox-navigation/build/index.js
+@@ -1,3 +1,8 @@
+ import MapboxNavigationView from "./ExpoMapboxNavigationView";
++import ExpoMapboxNavigationModule from "./ExpoMapboxNavigationModule";
++export function setCurrentDirectionsJson(json) {
++    const payload = json == null ? null : JSON.stringify(json);
++    return ExpoMapboxNavigationModule.setCurrentDirectionsJson(payload);
++}
+ export { MapboxNavigationView, };
+ //# sourceMappingURL=index.js.map
+diff --git a/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationDirectionsInterceptor.swift b/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationDirectionsInterceptor.swift
+new file mode 100644
+index 0000000..1734770
+--- /dev/null
++++ b/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationDirectionsInterceptor.swift
+@@ -0,0 +1,56 @@
++import Foundation
++
++/**
++ * Intercepts Mapbox Directions API requests from within the Nav SDK and
++ * returns a caller-supplied canned response (the backend's eco-route matching
++ * wrapped as a Directions-shape JSON). This lets us force the SDK to build its
++ * NavigationRoutes from OUR geometry instead of re-routing between via-points.
++ *
++ * Registered once at module init via URLProtocol.registerClass. Only kicks in
++ * when `ExpoMapboxNavigationDirectionsInterceptor.pendingJson` is non-nil.
++ */
++@objc public class ExpoMapboxNavigationDirectionsInterceptor: URLProtocol {
++    /// JSON bytes the interceptor will return on the next intercepted Directions request.
++    /// Consumed once — cleared after first response so a reroute falls back to real Mapbox.
++    public static var pendingJson: Data? = nil
++    private static let interceptorHandledKey = "EcoRouteInterceptorHandled"
++
++    public override class func canInit(with request: URLRequest) -> Bool {
++        if URLProtocol.property(forKey: interceptorHandledKey, in: request) != nil {
++            return false
++        }
++        guard pendingJson != nil else { return false }
++        guard let url = request.url, let host = url.host else { return false }
++        if host != "api.mapbox.com" { return false }
++        return url.path.hasPrefix("/directions/v5/")
++    }
++
++    public override class func canonicalRequest(for request: URLRequest) -> URLRequest {
++        return request
++    }
++
++    public override func startLoading() {
++        guard let json = ExpoMapboxNavigationDirectionsInterceptor.pendingJson,
++              let url = request.url else {
++            client?.urlProtocol(self, didFailWithError: NSError(domain: "EcoRouteInterceptor", code: -1))
++            return
++        }
++
++        // Mark as handled and one-shot consume — reroutes after this hit real Mapbox.
++        ExpoMapboxNavigationDirectionsInterceptor.pendingJson = nil
++
++        print("[ExpoMapboxNavigationInterceptor] serving canned JSON for \(url.path) (\(json.count) bytes)")
++
++        let response = HTTPURLResponse(
++            url: url,
++            statusCode: 200,
++            httpVersion: "HTTP/1.1",
++            headerFields: ["Content-Type": "application/json"]
++        )!
++        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
++        client?.urlProtocol(self, didLoad: json)
++        client?.urlProtocolDidFinishLoading(self)
++    }
++
++    public override func stopLoading() {}
++}
+diff --git a/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationModule.swift b/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationModule.swift
+index 965414e..3c60368 100644
+--- a/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationModule.swift
++++ b/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationModule.swift
+@@ -6,6 +6,21 @@ public class ExpoMapboxNavigationModule: Module {
+   public func definition() -> ModuleDefinition {
+     Name("ExpoMapboxNavigation")
+ 
++    OnCreate {
++      URLProtocol.registerClass(ExpoMapboxNavigationDirectionsInterceptor.self)
++      print("[ExpoMapboxNavigation] registered URLProtocol directions interceptor")
++    }
++
++    AsyncFunction("setCurrentDirectionsJson") { (jsonString: String?) in
++      if let s = jsonString, let data = s.data(using: .utf8) {
++        ExpoMapboxNavigationDirectionsInterceptor.pendingJson = data
++        print("[ExpoMapboxNavigation] pendingJson set (\(data.count) bytes)")
++      } else {
++        ExpoMapboxNavigationDirectionsInterceptor.pendingJson = nil
++        print("[ExpoMapboxNavigation] pendingJson cleared")
++      }
++    }
++
+     View(ExpoMapboxNavigationView.self) {
+       Events("onRouteProgressChanged", "onCancelNavigation", "onWaypointArrival", "onFinalDestinationArrival", "onRouteChanged", "onUserOffRoute", "onRoutesLoaded", "onRouteFailedToLoad")
+ 
 diff --git a/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationView.swift b/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationView.swift
-index 8f841df..af8f2e0 100644
+index 8f841df..8237322 100644
 --- a/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationView.swift
 +++ b/node_modules/@badatgil/expo-mapbox-navigation/ios/ExpoMapboxNavigationView.swift
-@@ -348,10 +348,19 @@ class ExpoMapboxNavigationViewController: UIViewController {
+@@ -322,17 +322,25 @@ class ExpoMapboxNavigationViewController: UIViewController {
+     }
+ 
+     func calculateRoutes(waypoints: Array<Waypoint>){
++        var queryItems: [URLQueryItem] = [
++            URLQueryItem(name: "exclude", value: currentRouteExcludeList?.joined(separator: ",")),
++            URLQueryItem(name: "max_height", value: String(format: "%.1f", vehicleMaxHeight ?? 0.0)),
++            URLQueryItem(name: "max_width", value: String(format: "%.1f", vehicleMaxWidth ?? 0.0))
++        ]
++        let separatorIndices = waypoints.enumerated()
++            .filter { $0.element.separatesLegs }
++            .map { String($0.offset) }
++        if !separatorIndices.isEmpty && separatorIndices.count < waypoints.count {
++            queryItems.append(URLQueryItem(name: "waypoints", value: separatorIndices.joined(separator: ";")))
++        }
+         let routeOptions = NavigationRouteOptions(
+             waypoints: waypoints,
+             profileIdentifier: currentRouteProfile != nil ? ProfileIdentifier(rawValue: currentRouteProfile!) : nil,
+-            queryItems: [
+-                URLQueryItem(name: "exclude", value: currentRouteExcludeList?.joined(separator: ",")),
+-                URLQueryItem(name: "max_height", value: String(format: "%.1f", vehicleMaxHeight ?? 0.0)),
+-                URLQueryItem(name: "max_width", value: String(format: "%.1f", vehicleMaxWidth ?? 0.0))
+-            ],
++            queryItems: queryItems,
+             locale: currentLocale,
+             distanceUnit: currentLocale.usesMetricSystem ? LengthFormatter.Unit.meter : LengthFormatter.Unit.mile
+         )
++        print("[ExpoMapboxNavigation] calculateRoutes waypoints=\(waypoints.count) separators=\(separatorIndices.joined(separator: ","))")
+ 
+         calculateRoutesTask = Task {
+             switch await self.routingProvider!.calculateRoutes(options: routeOptions).result {
+@@ -348,10 +356,19 @@ class ExpoMapboxNavigationViewController: UIViewController {
      }
  
      func calculateMapMatchingRoutes(waypoints: Array<Waypoint>){
@@ -23,3 +165,23 @@ index 8f841df..af8f2e0 100644
              distanceUnit: currentLocale.usesMetricSystem ? LengthFormatter.Unit.meter : LengthFormatter.Unit.mile
          )
          matchOptions.locale = currentLocale
+diff --git a/node_modules/@badatgil/expo-mapbox-navigation/src/index.ts b/node_modules/@badatgil/expo-mapbox-navigation/src/index.ts
+index d6f847c..09482d7 100644
+--- a/node_modules/@badatgil/expo-mapbox-navigation/src/index.ts
++++ b/node_modules/@badatgil/expo-mapbox-navigation/src/index.ts
+@@ -1,9 +1,15 @@
+ import MapboxNavigationView from "./ExpoMapboxNavigationView";
++import ExpoMapboxNavigationModule from "./ExpoMapboxNavigationModule";
+ import {
+   ExpoMapboxNavigationViewProps,
+   ExpoMapboxNavigationViewRef,
+ } from "./ExpoMapboxNavigation.types";
+ 
++export function setCurrentDirectionsJson(json: Record<string, unknown> | null): Promise<void> {
++  const payload = json == null ? null : JSON.stringify(json);
++  return ExpoMapboxNavigationModule.setCurrentDirectionsJson(payload);
++}
++
+ export {
+   MapboxNavigationView,
+   ExpoMapboxNavigationViewProps as MapboxNavigationViewProps,

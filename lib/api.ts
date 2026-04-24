@@ -116,6 +116,7 @@ export interface RouteOption {
   energy_kwh: number | null;
   elevation_gain_km: number | null;
   polyline: string;
+  directions_json: Record<string, unknown> | null;
   warnings: string[];
 }
 
@@ -220,6 +221,11 @@ export async function createVehicle(body: {
     '/vehicles',
     body,
   );
+  return data.data;
+}
+
+export async function getVehicles(): Promise<Vehicle[]> {
+  const { data } = await api.get<{ success: true; data: Vehicle[] }>('/vehicles');
   return data.data;
 }
 
