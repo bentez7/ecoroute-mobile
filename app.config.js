@@ -14,7 +14,7 @@ export default {
       supportsTablet: true,
       bundleIdentifier: 'com.bentez7.ecoroutemobile',
       infoPlist: {
-        UIBackgroundModes: ['location', 'fetch'],
+        UIBackgroundModes: ['location', 'fetch', 'audio'],
         NSLocationWhenInUseUsageDescription:
           'EcoRoute uses your location to plan eco-friendly routes and track your trips.',
         NSLocationAlwaysAndWhenInUseUsageDescription:

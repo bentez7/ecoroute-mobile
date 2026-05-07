@@ -21,6 +21,7 @@ import {
   type Vehicle,
 } from '@/lib/api';
 import { setPendingDirectionsJson } from '@/lib/pending-route';
+import { synthesizeDirectionsResponse } from '@/lib/synth-directions';
 
 const ROUTE_COLOR: Record<string, string> = {
   eco:      '#16A34A',
@@ -144,7 +145,24 @@ export default function RouteSelectScreen() {
   const handleStartTrip = useCallback(() => {
     if (!selectedVehicle || !routes[selectedRouteIdx]) return;
     const route = routes[selectedRouteIdx];
-    setPendingDirectionsJson(route.directions_json ?? null);
+    const backendJson = route.directions_json ?? null;
+    let pendingJson: Record<string, unknown> | null = backendJson;
+    if (!pendingJson) {
+      try {
+        pendingJson = synthesizeDirectionsResponse({
+          polyline:    route.polyline,
+          distanceM:   route.distance_km * 1000,
+          durationSec: route.duration_sec,
+          destLat,
+          destLng,
+        });
+        console.log('[route-select] synthesized directions_json (backend returned null)');
+      } catch (e) {
+        console.warn('[route-select] synth failed', (e as Error).message);
+      }
+    }
+    console.log('[route-select] directions_json present?', pendingJson != null, 'source=', backendJson ? 'backend' : 'synth');
+    setPendingDirectionsJson(pendingJson);
     router.push({
       pathname: '/navigate',
       params: {

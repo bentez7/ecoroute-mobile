@@ -1,14 +1,16 @@
 import { MapboxNavigationView } from '@badatgil/expo-mapbox-navigation';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 import { FeedbackBanner } from '@/components/feedback-banner';
 import { useActiveTrip } from '@/context/active-trip';
-import { type RouteLabel } from '@/lib/api';
+import { searchRoutes, type RouteLabel } from '@/lib/api';
+import { consumePendingDirectionsJson } from '@/lib/pending-route';
+import { synthesizeDirectionsResponse } from '@/lib/synth-directions';
 import {
   decode,
   haversineMeters,
@@ -43,18 +45,42 @@ export default function NavigateScreen() {
     fuelType?: string;
   }>();
 
-  const decoded = useMemo(() => decode(params.polyline ?? ''), [params.polyline]);
-  const isValid = hasMeaningfulSpan(decoded);
+  // Active polyline + directions JSON. Seeded from route-select on mount; both
+  // get replaced when the user goes off-route and we refetch from our backend.
+  const [activePolyline, setActivePolyline] = useState<string>(params.polyline ?? '');
+  const [directionsJson, setDirectionsJson] = useState<string | undefined>(() => {
+    const json = consumePendingDirectionsJson();
+    const stringified = json ? JSON.stringify(json) : undefined;
+    console.log('[navigate] consumed pending directionsJson; bytes=', stringified?.length ?? 0);
+    return stringified;
+  });
 
-  const coordinates = useMemo<LatLngObject[]>(
-    () => (isValid ? toLatLngObjects(sampleWaypoints(decoded, MATCH_MAX_COORDS)) : []),
-    [decoded, isValid],
+  const decoded = useMemo(() => decode(activePolyline), [activePolyline]);
+
+  console.log(
+    '[navigate] decoded coords=', decoded.length,
+    'first=', decoded[0],
+    'last=', decoded[decoded.length - 1],
   );
+
+  const isValid = hasMeaningfulSpan(decoded);
 
   const dest = useMemo(
     () => ({ lat: Number(params.destLat), lng: Number(params.destLng) }),
     [params.destLat, params.destLng],
   );
+
+  const coordinates = useMemo<LatLngObject[]>(() => {
+    if (!isValid) return [];
+    const sampled = toLatLngObjects(sampleWaypoints(decoded, MATCH_MAX_COORDS));
+    // Force the final waypoint to the user-selected destination so Map
+    // Matching ends where the user tapped (e.g. Monash), not where RouteE
+    // Compass's graph snapped the polyline to (e.g. an adjacent car park).
+    if (sampled.length > 0 && Number.isFinite(dest.lat) && Number.isFinite(dest.lng)) {
+      sampled[sampled.length - 1] = { latitude: dest.lat, longitude: dest.lng };
+    }
+    return sampled;
+  }, [decoded, isValid, dest.lat, dest.lng]);
 
   const { tripId, start, end, cancel, feedback, dismissFeedback } = useActiveTrip();
   const tripStartAttemptedRef = useRef(false);
@@ -130,6 +156,111 @@ export default function NavigateScreen() {
     [],
   );
 
+  // Lock + cooldown so a continuously-firing off-route signal doesn't spam
+  // /routes/search. 5s is enough to absorb GPS jitter without making the
+  // user wait forever for a fresh route once they've truly diverged.
+  const refetchInFlightRef = useRef(false);
+  const lastRefetchAtRef = useRef(0);
+
+  const handleUserOffRoute = useCallback(async () => {
+    if (refetchInFlightRef.current) return;
+    if (Date.now() - lastRefetchAtRef.current < 5000) return;
+    refetchInFlightRef.current = true;
+
+    try {
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      }).catch(() => null);
+      if (!loc) {
+        console.warn('[navigate] off-route: no GPS fix, skipping refetch');
+        return;
+      }
+
+      console.warn('[navigate] off-route — refetching route from backend', {
+        gps: { lat: loc.coords.latitude, lng: loc.coords.longitude },
+        dest: { lat: dest.lat, lng: dest.lng },
+      });
+
+      const results = await searchRoutes({
+        origin_lat: loc.coords.latitude,
+        origin_lng: loc.coords.longitude,
+        dest_lat: dest.lat,
+        dest_lng: dest.lng,
+      });
+
+      const picked = results.find((r) => r.label === params.label) ?? results[0];
+      if (!picked) {
+        console.warn('[navigate] off-route: backend returned no routes');
+        return;
+      }
+
+      let json: Record<string, unknown> | null = picked.directions_json;
+      if (!json) {
+        try {
+          json = synthesizeDirectionsResponse({
+            polyline:    picked.polyline,
+            distanceM:   picked.distance_km * 1000,
+            durationSec: picked.duration_sec,
+            destLat:     dest.lat,
+            destLng:     dest.lng,
+          });
+        } catch (e) {
+          console.warn('[navigate] off-route: synth failed', (e as Error).message);
+          return;
+        }
+      }
+
+      const stringified = JSON.stringify(json);
+      console.log('[navigate] off-route: applying new route', {
+        label: picked.label,
+        distance_km: picked.distance_km,
+        duration_sec: picked.duration_sec,
+        bytes: stringified.length,
+      });
+
+      setActivePolyline(picked.polyline);
+      setDirectionsJson(stringified);
+      lastRefetchAtRef.current = Date.now();
+    } catch (e) {
+      console.warn('[navigate] off-route refetch failed', (e as Error).message);
+    } finally {
+      refetchInFlightRef.current = false;
+    }
+  }, [dest.lat, dest.lng, params.label]);
+
+  const handleRouteChanged = useCallback(() => {
+    console.warn('[navigate] DID REROUTE — SDK swapped to a new route');
+  }, []);
+
+  // One-shot diagnostic: at mount, compare current GPS to the route's first
+  // vertex. If distance is >30–50 m, the SDK will fire an off-route reroute
+  // as soon as nav starts.
+  useEffect(() => {
+    if (decoded.length === 0) return;
+    (async () => {
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      }).catch(() => null);
+      if (!loc) {
+        console.log('[navigate] reroute-diag: no GPS fix available');
+        return;
+      }
+      const start = decoded[0];
+      const end = decoded[decoded.length - 1];
+      const distStartM = haversineMeters(
+        [loc.coords.latitude, loc.coords.longitude],
+        start,
+      );
+      console.log('[navigate] reroute-diag', {
+        gps: { lat: loc.coords.latitude, lng: loc.coords.longitude, accuracy_m: Math.round(loc.coords.accuracy ?? -1) },
+        route_start: { lat: start[0], lng: start[1] },
+        route_end: { lat: end[0], lng: end[1] },
+        gps_to_route_start_m: Math.round(distStartM),
+        likely_to_reroute: distStartM > 30,
+      });
+    })();
+  }, [decoded]);
+
   const handleRoutesLoaded = useCallback(
     (evt: { nativeEvent: { routes: { mainRoute: { distance: number; legs: { steps: { shape?: { coordinates: { latitude: number; longitude: number }[] } }[] }[] } } } }) => {
       const main = evt.nativeEvent.routes.mainRoute;
@@ -183,11 +314,14 @@ export default function NavigateScreen() {
         coordinates={coordinates}
         waypointIndices={waypointIndices}
         useRouteMatchingApi={true}
+        directionsJson={directionsJson}
         initialLocation={initialLocation}
         onFinalDestinationArrival={handleArrival}
         onCancelNavigation={handleCancel}
         onRouteFailedToLoad={handleRouteFailed}
         onRoutesLoaded={handleRoutesLoaded}
+        onUserOffRoute={handleUserOffRoute}
+        onRouteChanged={handleRouteChanged}
       />
       <FeedbackBanner items={feedback} onDismiss={dismissFeedback} />
     </View>

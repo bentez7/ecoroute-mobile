@@ -43,6 +43,7 @@ class ExpoMapboxNavigationViewController: UIViewController {
     var currentWaypointIndices: [Int]? = nil
     var isUsingRouteMatchingApi: Bool = false
     var muted: Bool = false
+    var currentDirectionsJsonString: String? = nil
 
     var onRouteProgressChanged:    EventDispatcher? = nil
     var onCancelNavigation:        EventDispatcher? = nil
@@ -123,9 +124,14 @@ class ExpoMapboxNavigationViewController: UIViewController {
         update()
     }
 
+    func setDirectionsJson(jsonString: String?) {
+        currentDirectionsJsonString = (jsonString?.isEmpty == true) ? nil : jsonString
+        update()
+    }
+
     func setIsMuted(isMuted: Bool?) {
         muted = isMuted ?? false
-        navigationViewController?.voiceController.speechSynthesizer.muted = muted
+        navigationViewController?.voiceController?.speechSynthesizer.muted = muted
     }
 
     func recenterMap() {
@@ -150,6 +156,7 @@ class ExpoMapboxNavigationViewController: UIViewController {
     private func update() {
         guard let coords = currentCoordinates, coords.count >= 2 else { return }
         calculateTask?.cancel()
+        calculateTask = nil
 
         let waypoints = coords.enumerated().map { (i, c) -> Waypoint in
             var w = Waypoint(coordinate: c)
@@ -157,10 +164,72 @@ class ExpoMapboxNavigationViewController: UIViewController {
             return w
         }
 
+        // Route-injection path: caller supplied a full Mapbox-Directions-shape
+        // JSON (produced by the backend). Decode it directly into a
+        // RouteResponse so we skip re-running Map Matching on the client.
+        if let jsonString = currentDirectionsJsonString {
+            presentFromDirectionsJson(jsonString: jsonString, waypoints: waypoints)
+            return
+        }
+
         if isUsingRouteMatchingApi {
             calculateMatching(waypoints: waypoints)
         } else {
             calculateRouting(waypoints: waypoints)
+        }
+    }
+
+    // Remove any previously-presented NavigationViewController so we don't end
+    // up with two live nav sessions stacked in the view hierarchy. Without
+    // this, an in-flight Directions/MapMatching response that lands after a
+    // JSON-injection update will overlay a second, re-snapped route on top of
+    // the verbatim one.
+    private func tearDownNavigationViewController() {
+        guard let nv = navigationViewController else { return }
+        nv.navigationService.stop()
+        nv.willMove(toParent: nil)
+        nv.view.removeFromSuperview()
+        nv.removeFromParent()
+        navigationViewController = nil
+    }
+
+    private func presentFromDirectionsJson(jsonString: String, waypoints: [Waypoint]) {
+        guard let data = jsonString.data(using: .utf8) else {
+            onRouteFailedToLoad?(["errorMessage": "directions JSON is not valid UTF-8"])
+            return
+        }
+        guard let first = waypoints.first, let last = waypoints.last, waypoints.count >= 2 else {
+            onRouteFailedToLoad?(["errorMessage": "need at least 2 waypoints for route injection"])
+            return
+        }
+
+        // RouteResponse decoder cross-references its decoded waypoints array
+        // against options.waypoints — counts must match or downstream
+        // legSeparators bookkeeping assigns nil endpoints into legs and crashes.
+        // Our injected JSON only has origin + destination, so build the options
+        // with the same two waypoints (both leg-separating).
+        var origin = Waypoint(coordinate: first.coordinate)
+        origin.separatesLegs = true
+        var dest = Waypoint(coordinate: last.coordinate)
+        dest.separatesLegs = true
+        let routeOptions = NavigationRouteOptions(waypoints: [origin, dest])
+        // Synth JSON encodes geometry at polyline precision 5 (the
+        // @mapbox/polyline default). NavigationRouteOptions defaults to
+        // .polyline6, which would decode every coord 10x too small and put
+        // the route in the Atlantic Ocean — triggering an immediate reroute.
+        routeOptions.shapeFormat = .polyline
+
+        let decoder = JSONDecoder()
+        decoder.userInfo[.options]     = routeOptions
+        decoder.userInfo[.credentials] = Directions.shared.credentials
+
+        do {
+            let response = try decoder.decode(RouteResponse.self, from: data)
+            NSLog("[ExpoMapboxNavigation] presentFromDirectionsJson: decoded routes=\(response.routes?.count ?? 0)")
+            present(response: response)
+        } catch {
+            NSLog("[ExpoMapboxNavigation] presentFromDirectionsJson: decode failed \(error)")
+            onRouteFailedToLoad?(["errorMessage": "Failed to decode directions JSON: \(error.localizedDescription)"])
         }
     }
 
@@ -208,6 +277,14 @@ class ExpoMapboxNavigationViewController: UIViewController {
 
         let firstRoute = routes[0]
         NSLog("[ExpoMapboxNavigation] present: route0 distance=\(firstRoute.distance) legs=\(firstRoute.legs.count)")
+        if let shape = firstRoute.shape {
+            let coords = shape.coordinates
+            let firstC = coords.first.map { "(\($0.latitude),\($0.longitude))" } ?? "nil"
+            let lastC  = coords.last.map  { "(\($0.latitude),\($0.longitude))" } ?? "nil"
+            NSLog("[ExpoMapboxNavigation] present: shape coords=\(coords.count) first=\(firstC) last=\(lastC)")
+        } else {
+            NSLog("[ExpoMapboxNavigation] present: shape is nil")
+        }
 
         let indexed = IndexedRouteResponse(routeResponse: response, routeIndex: 0)
         NSLog("[ExpoMapboxNavigation] present: built IndexedRouteResponse")
@@ -219,14 +296,20 @@ class ExpoMapboxNavigationViewController: UIViewController {
             ]
         ])
 
+        tearDownNavigationViewController()
+
         let nv = NavigationViewController(for: indexed, navigationOptions: nil)
         NSLog("[ExpoMapboxNavigation] present: built NavigationViewController")
         nv.delegate = self
-        nv.voiceController.speechSynthesizer.muted = muted
+        NSLog("[ExpoMapboxNavigation] present: delegate set")
+        nv.voiceController?.speechSynthesizer.muted = muted
+        NSLog("[ExpoMapboxNavigation] present: voice set")
         navigationViewController = nv
 
         addChild(nv)
+        NSLog("[ExpoMapboxNavigation] present: addChild done")
         view.addSubview(nv.view)
+        NSLog("[ExpoMapboxNavigation] present: addSubview done")
         nv.view.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
             nv.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -234,7 +317,9 @@ class ExpoMapboxNavigationViewController: UIViewController {
             nv.view.topAnchor.constraint(equalTo: view.topAnchor),
             nv.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+        NSLog("[ExpoMapboxNavigation] present: constraints activated")
         nv.didMove(toParent: self)
+        NSLog("[ExpoMapboxNavigation] present: didMove done")
     }
 
     private func convertRoute(route: Route) -> Any {

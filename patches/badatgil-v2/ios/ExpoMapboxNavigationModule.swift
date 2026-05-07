@@ -37,6 +37,10 @@ public class ExpoMapboxNavigationModule: Module {
         view.controller.setIsUsingRouteMatchingApi(useRouteMatchingApi: value)
       }
 
+      Prop("directionsJson") { (view: ExpoMapboxNavigationView, value: String?) in
+        view.controller.setDirectionsJson(jsonString: value)
+      }
+
       Prop("mute") { (view: ExpoMapboxNavigationView, isMuted: Bool?) in
         view.controller.setIsMuted(isMuted: isMuted)
       }
