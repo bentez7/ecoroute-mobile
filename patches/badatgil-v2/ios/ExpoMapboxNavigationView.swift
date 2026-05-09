@@ -213,11 +213,13 @@ class ExpoMapboxNavigationViewController: UIViewController {
         var dest = Waypoint(coordinate: last.coordinate)
         dest.separatesLegs = true
         let routeOptions = NavigationRouteOptions(waypoints: [origin, dest])
-        // Synth JSON encodes geometry at polyline precision 5 (the
-        // @mapbox/polyline default). NavigationRouteOptions defaults to
-        // .polyline6, which would decode every coord 10x too small and put
-        // the route in the Atlantic Ocean — triggering an immediate reroute.
-        routeOptions.shapeFormat = .polyline
+        // Both injected JSON producers (backend Map Matching and the synth
+        // fallback in lib/synth-directions.ts) emit geometry at polyline6 —
+        // matching what Mapbox's own Directions/Map-Matching APIs return.
+        // NavigationRouteOptions defaults to .polyline6 already, but set it
+        // explicitly so this code path doesn't silently break if a future
+        // SDK version changes the default.
+        routeOptions.shapeFormat = .polyline6
 
         let decoder = JSONDecoder()
         decoder.userInfo[.options]     = routeOptions
