@@ -81,6 +81,40 @@ class ExpoMapboxNavigationViewController: UIViewController {
         navigationViewController?.navigationService.stop()
     }
 
+    // When this VC is hosted inside an Expo native view inside a React
+    // Native screen, the safe-area insets that propagate down to our view
+    // can be zero — even though the window has a real top inset for the
+    // status bar / Dynamic Island. The Mapbox NavigationViewController's
+    // top banner anchors its content to its own safeAreaLayoutGuide, so a
+    // zero inset puts the turn icon, distance, and street name flush with
+    // the screen top, overlapping the clock and Dynamic Island.
+    //
+    // Bridge the gap: take the window's actual top inset and feed any
+    // missing portion to the child via additionalSafeAreaInsets. If the
+    // system already provides the inset to our view tree, the diff is zero
+    // and we add nothing.
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        propagateSafeAreaToNavVC()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        propagateSafeAreaToNavVC()
+    }
+
+    private func propagateSafeAreaToNavVC() {
+        guard let nv = navigationViewController else { return }
+        let windowTop = view.window?.safeAreaInsets.top ?? 0
+        let viewTop   = view.safeAreaInsets.top
+        let missing   = max(0, windowTop - viewTop)
+        if nv.additionalSafeAreaInsets.top != missing {
+            nv.additionalSafeAreaInsets = UIEdgeInsets(
+                top: missing, left: 0, bottom: 0, right: 0
+            )
+        }
+    }
+
     private func installNotificationObservers() {
         let nc = NotificationCenter.default
         progressObserver = nc.addObserver(
