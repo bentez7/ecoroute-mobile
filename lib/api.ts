@@ -21,6 +21,48 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+// On 401, refresh the access token once and retry the original request.
+// A single in-flight refresh is shared across concurrent 401s to avoid
+// hammering /auth/refresh when many requests fire after expiry.
+let refreshPromise: Promise<string> | null = null;
+
+async function performRefresh(): Promise<string> {
+  const stored = await SecureStore.getItemAsync('refresh_token');
+  if (!stored) throw new Error('No refresh token');
+  const { session } = await refreshSession(stored);
+  await SecureStore.setItemAsync('access_token', session.access_token);
+  await SecureStore.setItemAsync('refresh_token', session.refresh_token);
+  return session.access_token;
+}
+
+api.interceptors.response.use(
+  (res) => res,
+  async (err) => {
+    const original = err.config;
+    const status = err.response?.status;
+    const isAuthCall = typeof original?.url === 'string' && original.url.startsWith('/auth/');
+
+    if (status !== 401 || !original || original._retry || isAuthCall) {
+      return Promise.reject(err);
+    }
+
+    original._retry = true;
+    try {
+      refreshPromise = refreshPromise ?? performRefresh();
+      const newToken = await refreshPromise;
+      refreshPromise = null;
+      original.headers = original.headers ?? {};
+      original.headers.Authorization = `Bearer ${newToken}`;
+      return api(original);
+    } catch (refreshErr) {
+      refreshPromise = null;
+      await SecureStore.deleteItemAsync('access_token');
+      await SecureStore.deleteItemAsync('refresh_token');
+      return Promise.reject(refreshErr);
+    }
+  },
+);
+
 // --- Auth ---
 
 export interface AuthUser {
@@ -31,7 +73,9 @@ export interface AuthUser {
 
 export interface AuthSession {
   access_token: string;
+  refresh_token: string;
   expires_at: number;
+  expires_in: number;
 }
 
 export interface AuthResponse {
@@ -76,6 +120,17 @@ export async function signIn(
 
 export async function signOut(): Promise<void> {
   await api.post('/auth/signout');
+}
+
+export async function refreshSession(refresh_token: string): Promise<AuthResponse> {
+  // Use bare axios — bypass the shared `api` instance so request/response
+  // interceptors don't attach an expired bearer or recurse on 401.
+  const { data } = await axios.post<{ success: true; data: AuthResponse }>(
+    `${BASE_URL}/auth/refresh`,
+    { refresh_token },
+    { headers: { 'Content-Type': 'application/json' }, timeout: 15000 },
+  );
+  return data.data;
 }
 
 export async function getMe(): Promise<AuthUser> {
