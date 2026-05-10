@@ -22,13 +22,34 @@ TaskManager.defineTask<{ locations?: Location.LocationObject[] }>(
 
     for (const loc of locations) {
       try {
+        // iOS CoreLocation returns -1 (not null) when speed/course are
+        // unavailable — typical when the device is stationary or in the
+        // simulator. The backend validator rejects negatives, so collapse
+        // any unusable value to null here. Heading is 0..360; speed is
+        // non-negative when valid.
+        const rawSpeed   = loc.coords.speed;
+        const rawHeading = loc.coords.heading;
+        const speed_ms    = rawSpeed   != null && rawSpeed   >= 0 ? rawSpeed   : null;
+        const heading_deg = rawHeading != null && rawHeading >= 0 ? rawHeading : null;
+
+        const recorded_at = new Date(loc.timestamp).toISOString();
+        console.log(
+          '[telemetry]',
+          recorded_at,
+          `lat=${loc.coords.latitude.toFixed(6)}`,
+          `lng=${loc.coords.longitude.toFixed(6)}`,
+          `speed_ms=${speed_ms == null ? 'null' : speed_ms.toFixed(2)}`,
+          `heading_deg=${heading_deg == null ? 'null' : heading_deg.toFixed(1)}`,
+          `alt=${loc.coords.altitude == null ? 'null' : loc.coords.altitude.toFixed(1)}`,
+        );
+
         await enqueuePoint(tripId, {
-          recorded_at: new Date(loc.timestamp).toISOString(),
+          recorded_at,
           lat: loc.coords.latitude,
           lng: loc.coords.longitude,
-          speed_ms: loc.coords.speed ?? null,
+          speed_ms,
           altitude_m: loc.coords.altitude ?? null,
-          heading_deg: loc.coords.heading ?? null,
+          heading_deg,
         });
       } catch (e) {
         console.warn('[location-task] enqueue failed', (e as Error).message);
