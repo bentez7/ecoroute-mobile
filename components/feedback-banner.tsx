@@ -21,9 +21,24 @@ const STYLE_BY_SEVERITY: Record<
   eco_praise: { bg: '#15803D', fg: '#FFFFFF', icon: 'eco' },
 };
 
+// Fallback severity per event_type when the backend hasn't populated the
+// `severity` column. Hard-driving feedback defaults to warning, ambient
+// nudges to info — matches what the backend will set explicitly once the
+// FeedbackEventService is updated.
+const DEFAULT_SEVERITY_BY_EVENT_TYPE: Record<string, FeedbackSeverity> = {
+  harsh_accel:    'warning',
+  harsh_brake:    'warning',
+  idling:         'info',
+  speed_variance: 'info',
+};
+
+function effectiveSeverity(evt: FeedbackEvent): FeedbackSeverity {
+  return evt.severity ?? DEFAULT_SEVERITY_BY_EVENT_TYPE[evt.event_type] ?? 'info';
+}
+
 function styleFor(evt: FeedbackEvent) {
   if (evt.event_type === 'eco_praise') return STYLE_BY_SEVERITY.eco_praise;
-  return STYLE_BY_SEVERITY[evt.severity];
+  return STYLE_BY_SEVERITY[effectiveSeverity(evt)] ?? STYLE_BY_SEVERITY.info;
 }
 
 export function FeedbackBanner({ items, onDismiss }: Props) {
@@ -35,11 +50,13 @@ export function FeedbackBanner({ items, onDismiss }: Props) {
     if (lastIdRef.current === top.id) return;
     lastIdRef.current = top.id;
 
-    if (top.severity === 'critical') {
+    const sev = effectiveSeverity(top);
+
+    if (sev === 'critical') {
       Vibration.vibrate(200);
     }
 
-    if (top.severity === 'info' || top.event_type === 'eco_praise') {
+    if (sev === 'info' || top.event_type === 'eco_praise') {
       const t = setTimeout(() => onDismiss(top.id), AUTO_DISMISS_MS);
       return () => clearTimeout(t);
     }
@@ -48,7 +65,8 @@ export function FeedbackBanner({ items, onDismiss }: Props) {
   if (!top) return null;
 
   const s = styleFor(top);
-  const isSticky = top.severity === 'warning' || top.severity === 'critical';
+  const sev = effectiveSeverity(top);
+  const isSticky = sev === 'warning' || sev === 'critical';
 
   return (
     <View pointerEvents="box-none" style={styles.wrap}>
