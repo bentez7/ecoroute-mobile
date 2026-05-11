@@ -71,10 +71,18 @@ export default function RouteSelectScreen() {
     originLng:   string;
   }>();
 
-  const destLat   = parseFloat(params.destLat   ?? '0');
-  const destLng   = parseFloat(params.destLng   ?? '0');
-  const originLat = parseFloat(params.originLat ?? '0');
-  const originLng = parseFloat(params.originLng ?? '0');
+  const destLat   = parseFloat(params.destLat   ?? '');
+  const destLng   = parseFloat(params.destLng   ?? '');
+  const originLat = parseFloat(params.originLat ?? '');
+  const originLng = parseFloat(params.originLng ?? '');
+
+  const coordsValid =
+    Number.isFinite(destLat) && Number.isFinite(destLng) &&
+    Number.isFinite(originLat) && Number.isFinite(originLng);
+
+  if (!coordsValid) {
+    console.warn('[route-select] invalid coords from params:', params);
+  }
 
   const cameraRef = useRef<MapboxGL.Camera>(null);
 
@@ -201,6 +209,25 @@ export default function RouteSelectScreen() {
   }, [confirmedVehicle, routes, selectedRouteIdx, originLat, originLng, destLat, destLng, params.destAddress, router]);
 
   const selectedRoute = routes[selectedRouteIdx];
+
+  if (!coordsValid) {
+    return (
+      <View style={[styles.root, { alignItems: 'center', justifyContent: 'center', padding: 24 }]}>
+        <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827', textAlign: 'center' }}>
+          Couldn&apos;t open this destination
+        </Text>
+        <Text style={{ marginTop: 8, color: '#6B7280', textAlign: 'center' }}>
+          The selected place is missing location data. Please pick another.
+        </Text>
+        <TouchableOpacity
+          style={[styles.ctaBtn, { marginTop: 24, paddingHorizontal: 24 }]}
+          onPress={() => router.back()}
+        >
+          <Text style={styles.ctaText}>Go back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>

@@ -131,6 +131,16 @@ export default function HomeScreen() {
   }, [destQuery, userCoords]);
 
   const goToRouteSelect = useCallback((p: { name: string; address: string; lat: number; lng: number }) => {
+    if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) {
+      console.warn('[home] suggestion missing coords, ignoring:', p);
+      Alert.alert('No location', `"${p.name}" is missing location data. Please pick another result.`);
+      return;
+    }
+    if (!Number.isFinite(userCoords[0]) || !Number.isFinite(userCoords[1])) {
+      console.warn('[home] userCoords not ready, ignoring tap. userCoords =', userCoords);
+      Alert.alert('Location not ready', 'Still getting your location. Please try again in a moment.');
+      return;
+    }
     router.push({
       pathname: '/route-select',
       params: {
@@ -179,7 +189,15 @@ export default function HomeScreen() {
             <MapboxGL.Camera ref={cameraRef} followUserLocation followZoomLevel={14} />
             <MapboxGL.UserLocation
               visible
-              onUpdate={(loc) => setUserCoords([loc.coords.longitude, loc.coords.latitude])}
+              onUpdate={(loc) => {
+                const lng = loc?.coords?.longitude;
+                const lat = loc?.coords?.latitude;
+                if (Number.isFinite(lng) && Number.isFinite(lat)) {
+                  setUserCoords([lng, lat]);
+                } else {
+                  console.warn('[home] UserLocation.onUpdate missing coords:', loc);
+                }
+              }}
             />
           </MapboxGL.MapView>
         )}
