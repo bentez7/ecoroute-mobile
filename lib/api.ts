@@ -1,6 +1,7 @@
 import Constants from 'expo-constants';
-import * as SecureStore from 'expo-secure-store';
 import axios from 'axios';
+
+import { supabase } from '@/lib/supabase';
 
 const BASE_URL =
   (Constants.expoConfig?.extra?.backendUrl as string | undefined) ??
@@ -11,76 +12,15 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
-// Attach stored token to every request
+// Attach Supabase access token to every request
 api.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync('access_token');
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
-
-// --- Auth ---
-
-export interface AuthUser {
-  id: string;
-  email: string | null;
-  display_name: string | null;
-}
-
-export interface AuthSession {
-  access_token: string;
-  expires_at: number;
-}
-
-export interface AuthResponse {
-  user: AuthUser;
-  session: AuthSession;
-}
-
-export async function signUp(
-  email: string,
-  password: string,
-  display_name?: string,
-): Promise<AuthResponse> {
-  const { data } = await api.post<{ success: true; data: AuthResponse }>(
-    '/auth/signup',
-    { email, password, display_name },
-  );
-  return data.data;
-}
-
-export async function signIn(
-  email: string,
-  password: string,
-): Promise<AuthResponse> {
-  const url = `${api.defaults.baseURL}/auth/signin`;
-  const body = { email, password };
-  console.log('[signIn] POST', url);
-  console.log('[signIn] body', JSON.stringify(body));
-  try {
-    const { data } = await api.post<{ success: true; data: AuthResponse }>(
-      '/auth/signin',
-      body,
-    );
-    console.log('[signIn] response', JSON.stringify(data));
-    return data.data;
-  } catch (err: any) {
-    console.log('[signIn] error status', err?.response?.status);
-    console.log('[signIn] error data', JSON.stringify(err?.response?.data));
-    console.log('[signIn] error message', err?.message);
-    throw err;
-  }
-}
-
-export async function signOut(): Promise<void> {
-  await api.post('/auth/signout');
-}
-
-export async function getMe(): Promise<AuthUser> {
-  const { data } = await api.get<{ success: true; data: AuthUser }>('/auth/me');
-  return data.data;
-}
 
 // --- Places ---
 

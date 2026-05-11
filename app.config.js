@@ -42,6 +42,7 @@ export default {
       'expo-router',
       'expo-dev-client',
       'expo-secure-store',
+      'expo-web-browser',
       [
         '@rnmapbox/maps',
         { RNMapboxMapsDownloadToken: process.env.RNMAPBOX_MAPS_DOWNLOAD_TOKEN },
@@ -63,7 +64,9 @@ export default {
     },
     extra: {
       mapboxPublicToken: process.env.MAPBOX_PUBLIC_TOKEN,
-      backendUrl: process.env.BACKEND_URL ?? 'http://localhost:3000/api',
+      backendUrl:        process.env.BACKEND_URL ?? 'http://localhost:3000/api',
+      supabaseUrl:       process.env.SUPABASE_URL,
+      supabaseAnonKey:   process.env.SUPABASE_ANON_KEY,
     },
   },
 };

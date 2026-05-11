@@ -1,3 +1,4 @@
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import { Link } from 'expo-router';
 import { useState } from 'react';
@@ -16,12 +17,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/auth';
 
 export default function SignInScreen() {
-  const { login } = useAuth();
+  const { login, signInWithGoogle, signInWithApple } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [oauthLoading, setOauthLoading] = useState<'google' | 'apple' | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+
+  function extractError(err: unknown, fallback: string): string {
+    return (
+      (err as { message?: string })?.message ??
+      (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
+      fallback
+    );
+  }
 
   async function handleSignIn() {
     if (!email || !password) {
@@ -33,12 +43,22 @@ export default function SignInScreen() {
     try {
       await login(email.trim(), password);
     } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
-        'Sign in failed. Please try again.';
-      setError(msg);
+      setError(extractError(err, 'Sign in failed. Please try again.'));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleOAuth(provider: 'google' | 'apple') {
+    setError('');
+    setOauthLoading(provider);
+    try {
+      if (provider === 'google') await signInWithGoogle();
+      else await signInWithApple();
+    } catch (err: unknown) {
+      setError(extractError(err, `${provider === 'google' ? 'Google' : 'Apple'} sign in failed.`));
+    } finally {
+      setOauthLoading(null);
     }
   }
 
@@ -107,15 +127,51 @@ export default function SignInScreen() {
           </View>
 
           <Pressable
-            style={[styles.btn, loading && styles.btnDisabled]}
+            style={[styles.btn, (loading || !!oauthLoading) && styles.btnDisabled]}
             onPress={handleSignIn}
-            disabled={loading}>
+            disabled={loading || !!oauthLoading}>
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
               <Text style={styles.btnText}>Sign In</Text>
             )}
           </Pressable>
+
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>or continue with</Text>
+            <View style={styles.dividerLine} />
+          </View>
+
+          <Pressable
+            style={[styles.oauthBtn, (loading || !!oauthLoading) && styles.btnDisabled]}
+            onPress={() => handleOAuth('google')}
+            disabled={loading || !!oauthLoading}>
+            {oauthLoading === 'google' ? (
+              <ActivityIndicator color="#1B2B45" />
+            ) : (
+              <>
+                <FontAwesome color="#DB4437" name="google" size={18} />
+                <Text style={styles.oauthBtnText}>Continue with Google</Text>
+              </>
+            )}
+          </Pressable>
+
+          {Platform.OS === 'ios' ? (
+            <Pressable
+              style={[styles.appleBtn, (loading || !!oauthLoading) && styles.btnDisabled]}
+              onPress={() => handleOAuth('apple')}
+              disabled={loading || !!oauthLoading}>
+              {oauthLoading === 'apple' ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <FontAwesome color="#FFFFFF" name="apple" size={20} />
+                  <Text style={styles.appleBtnText}>Continue with Apple</Text>
+                </>
+              )}
+            </Pressable>
+          ) : null}
         </View>
 
         <View style={styles.footer}>
@@ -192,6 +248,32 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.6 },
   btnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 8 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.15)' },
+  dividerText: { color: 'rgba(255,255,255,0.55)', fontSize: 13 },
+
+  oauthBtn: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  oauthBtnText: { color: '#1B2B45', fontSize: 15, fontWeight: '700' },
+
+  appleBtn: {
+    backgroundColor: '#000000',
+    borderRadius: 16,
+    height: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  appleBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
 
   footer: { flexDirection: 'row', justifyContent: 'center', marginTop: 32 },
   footerText: { color: 'rgba(255,255,255,0.55)', fontSize: 15 },
