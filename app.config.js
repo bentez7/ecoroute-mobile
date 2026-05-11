@@ -14,7 +14,6 @@ export default {
       supportsTablet: true,
       bundleIdentifier: 'com.bentez7.ecoroutemobile',
       infoPlist: {
-        UIBackgroundModes: ['location', 'fetch', 'audio'],
         NSLocationWhenInUseUsageDescription:
           'EcoRoute uses your location to plan eco-friendly routes and track your trips.',
         NSLocationAlwaysAndWhenInUseUsageDescription:
@@ -22,7 +21,6 @@ export default {
       },
     },
     android: {
-      package: 'com.bentez7.ecoroutemobile',
       adaptiveIcon: {
         backgroundColor: '#E6F4FE',
         foregroundImage: './assets/images/android-icon-foreground.png',
@@ -44,40 +42,10 @@ export default {
       'expo-router',
       'expo-dev-client',
       'expo-secure-store',
-<<<<<<< HEAD
       'expo-web-browser',
-=======
-      'expo-task-manager',
-      'expo-sqlite',
-      [
-        'expo-location',
-        {
-          locationWhenInUsePermission:
-            'Allow EcoRoute to use your location for turn-by-turn navigation.',
-          locationAlwaysAndWhenInUsePermission:
-            'Allow EcoRoute to track your trip in the background to record telemetry.',
-          isIosBackgroundLocationEnabled: true,
-          isAndroidBackgroundLocationEnabled: true,
-        },
-      ],
->>>>>>> 91d2c94e478f137ee509785743f06e7cb0ca26fc
       [
         '@rnmapbox/maps',
-        {
-          RNMapboxMapsDownloadToken: process.env.RNMAPBOX_MAPS_DOWNLOAD_TOKEN,
-          RNMapboxMapsVersion: '~> 10.19.0',
-        },
-      ],
-      [
-        '@badatgil/expo-mapbox-navigation',
-        {
-          accessToken: process.env.MAPBOX_PUBLIC_TOKEN,
-          mapboxMapsVersion: '~> 10.19.0',
-        },
-      ],
-      [
-        'expo-build-properties',
-        { ios: { useFrameworks: 'static' } },
+        { RNMapboxMapsDownloadToken: process.env.RNMAPBOX_MAPS_DOWNLOAD_TOKEN },
       ],
       [
         'expo-splash-screen',
@@ -96,17 +64,9 @@ export default {
     },
     extra: {
       mapboxPublicToken: process.env.MAPBOX_PUBLIC_TOKEN,
-<<<<<<< HEAD
       backendUrl:        process.env.BACKEND_URL ?? 'http://localhost:3000/api',
       supabaseUrl:       process.env.SUPABASE_URL,
       supabaseAnonKey:   process.env.SUPABASE_ANON_KEY,
-=======
-      backendUrl: process.env.BACKEND_URL ?? 'http://localhost:3000/api',
-      supabaseUrl: process.env.SUPABASE_URL,
-      supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
-      vehicleId: process.env.VEHICLE_ID,
-      fuelType: process.env.FUEL_TYPE ?? 'petrol',
->>>>>>> 91d2c94e478f137ee509785743f06e7cb0ca26fc
     },
   },
 };

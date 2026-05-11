@@ -3,9 +3,7 @@ import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 import type { Session } from '@supabase/supabase-js';
 import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
 
-<<<<<<< HEAD
 import { supabase } from '@/lib/supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -16,9 +14,6 @@ export interface AuthUser {
   display_name: string | null;
   avatar_url: string | null;
 }
-=======
-import { AuthUser, getMe, refreshSession, signIn, signOut, signUp } from '@/lib/api';
->>>>>>> 91d2c94e478f137ee509785743f06e7cb0ca26fc
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -93,7 +88,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const segments = useSegments();
 
-<<<<<<< HEAD
   // Restore session on mount, then subscribe to changes
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -108,35 +102,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       sub.subscription.unsubscribe();
     };
-=======
-  // On mount — restore session from secure storage.
-  // Prefer the refresh token: the access token is likely expired by the time
-  // the user reopens the app, so refreshing proactively avoids a guaranteed 401.
-  useEffect(() => {
-    (async () => {
-      try {
-        const storedRefresh = await SecureStore.getItemAsync('refresh_token');
-        if (storedRefresh) {
-          const { session, user: authUser } = await refreshSession(storedRefresh);
-          await SecureStore.setItemAsync('access_token', session.access_token);
-          await SecureStore.setItemAsync('refresh_token', session.refresh_token);
-          setUser(authUser);
-        } else {
-          // Legacy install (pre-refresh-token) — fall back to validating the access token.
-          const token = await SecureStore.getItemAsync('access_token');
-          if (token) {
-            const me = await getMe();
-            setUser(me);
-          }
-        }
-      } catch {
-        await SecureStore.deleteItemAsync('access_token');
-        await SecureStore.deleteItemAsync('refresh_token');
-      } finally {
-        setIsLoading(false);
-      }
-    })();
->>>>>>> 91d2c94e478f137ee509785743f06e7cb0ca26fc
   }, []);
 
   const user = mapUser(session);
@@ -155,32 +120,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, segments, isLoading, router]);
 
   const login = useCallback(async (email: string, password: string) => {
-<<<<<<< HEAD
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
-=======
-    const { session, user: authUser } = await signIn(email, password);
-    await SecureStore.setItemAsync('access_token', session.access_token);
-    await SecureStore.setItemAsync('refresh_token', session.refresh_token);
-    setUser(authUser);
->>>>>>> 91d2c94e478f137ee509785743f06e7cb0ca26fc
   }, []);
 
   const register = useCallback(
     async (email: string, password: string, displayName?: string) => {
-<<<<<<< HEAD
       const { error } = await supabase.auth.signUp({
         email,
         password,
         options: displayName ? { data: { display_name: displayName } } : undefined,
       });
       if (error) throw error;
-=======
-      const { session, user: authUser } = await signUp(email, password, displayName);
-      await SecureStore.setItemAsync('access_token', session.access_token);
-      await SecureStore.setItemAsync('refresh_token', session.refresh_token);
-      setUser(authUser);
->>>>>>> 91d2c94e478f137ee509785743f06e7cb0ca26fc
     },
     [],
   );
@@ -194,7 +145,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-<<<<<<< HEAD
     await supabase.auth.signOut();
   }, []);
 
@@ -202,27 +152,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{ user, session, isLoading, login, register, signInWithGoogle, signInWithApple, logout }}>
       {children}
-=======
-    try {
-      await signOut();
-    } catch {
-      // Ignore — token may already be invalid
-    }
-    await SecureStore.deleteItemAsync('access_token');
-    await SecureStore.deleteItemAsync('refresh_token');
-    setUser(null);
-  }, []);
-
-  return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
-      {isLoading ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#1B2B45' }}>
-          <ActivityIndicator color="#FFFFFF" />
-        </View>
-      ) : (
-        children
-      )}
->>>>>>> 91d2c94e478f137ee509785743f06e7cb0ca26fc
     </AuthContext.Provider>
   );
 }
