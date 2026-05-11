@@ -273,6 +273,14 @@ export default function HomeScreen() {
             </View>
           )}
 
+          {/* DEV-ONLY: simulate TBT with a hardcoded polyline. Remove with app/dev-navigate.tsx */}
+          <TouchableOpacity
+            style={styles.devBtn}
+            onPress={() => router.push('/dev-navigate')}>
+            <MaterialIcons color="#B45309" name="science" size={14} />
+            <Text style={styles.devBtnText}>Dev: Simulate TBT</Text>
+          </TouchableOpacity>
+
           <View style={{ height: 24 }} />
         </ScrollView>
       </View>
@@ -387,4 +395,21 @@ const styles = StyleSheet.create({
   emptyText: {
     color: '#64748B', fontSize: 14, textAlign: 'center', lineHeight: 20,
   },
+
+  // DEV-ONLY
+  devBtn: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    alignSelf: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#FBBF24',
+    backgroundColor: 'rgba(251,191,36,0.08)',
+  },
+  devBtnText: { color: '#B45309', fontSize: 12, fontWeight: '700' },
 });
