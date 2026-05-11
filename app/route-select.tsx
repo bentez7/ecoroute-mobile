@@ -15,13 +15,22 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  getVehicles,
+  createTrip,
+  createVehicle,
+  getVehicleMakes,
+  getVehicleModels,
+  getVehicleVariants,
   searchRoutes,
   type RouteOption,
-  type Vehicle,
+  type VehicleVariant,
 } from '@/lib/api';
-import { setPendingDirectionsJson } from '@/lib/pending-route';
-import { synthesizeDirectionsResponse } from '@/lib/synth-directions';
+
+type ConfirmedVehicle = {
+  make: string;
+  model: string;
+  variant: VehicleVariant;
+  vehicleId?: string;
+};
 
 const ROUTE_COLOR: Record<string, string> = {
   eco:      '#16A34A',
@@ -74,11 +83,15 @@ export default function RouteSelectScreen() {
   const [loadingRoutes, setLoadingRoutes] = useState(true);
 
   const [showVehiclePicker, setShowVehiclePicker] = useState(false);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [makes, setMakes] = useState<string[]>([]);
+  const [selectedMake, setSelectedMake] = useState<string | null>(null);
+  const [models, setModels] = useState<string[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [variants, setVariants] = useState<VehicleVariant[]>([]);
+  const [selectedVariant, setSelectedVariant] = useState<VehicleVariant | null>(null);
+  const [confirmedVehicle, setConfirmedVehicle] = useState<ConfirmedVehicle | null>(null);
 
-
-  const selectedVehicle = vehicles.find((v) => v.id === selectedVehicleId) ?? null;
+  const [startingTrip, setStartingTrip] = useState(false);
 
   // Decoded route coordinate arrays — memoised so map features are stable
   const decodedRoutes = useMemo(
@@ -90,12 +103,7 @@ export default function RouteSelectScreen() {
   useEffect(() => {
     let cancelled = false;
     setLoadingRoutes(true);
-    searchRoutes({
-      origin_lat: originLat,
-      origin_lng: originLng,
-      dest_lat: destLat,
-      dest_lng: destLng,
-    })
+    searchRoutes(originLat, originLng, destLat, destLng)
       .then(results => {
         if (cancelled) return;
         setRoutes(results);
@@ -128,59 +136,69 @@ export default function RouteSelectScreen() {
     );
   }, [selectedRouteIdx, decodedRoutes]);
 
-  // Fetch the user's vehicles and pre-select the default one
+  // Vehicle picker data
   useEffect(() => {
-    let cancelled = false;
-    getVehicles()
-      .then((list) => {
-        if (cancelled) return;
-        setVehicles(list);
-        const def = list.find((v) => v.is_default) ?? list[0];
-        if (def) setSelectedVehicleId(def.id);
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, []);
-
-  const handleStartTrip = useCallback(() => {
-    if (!selectedVehicle || !routes[selectedRouteIdx]) return;
-    const route = routes[selectedRouteIdx];
-    const backendJson = route.directions_json ?? null;
-    let pendingJson: Record<string, unknown> | null = backendJson;
-    if (!pendingJson) {
-      try {
-        pendingJson = synthesizeDirectionsResponse({
-          polyline:    route.polyline,
-          distanceM:   route.distance_km * 1000,
-          durationSec: route.duration_sec,
-          destLat,
-          destLng,
-        });
-        console.log('[route-select] synthesized directions_json (backend returned null)');
-      } catch (e) {
-        console.warn('[route-select] synth failed', (e as Error).message);
-      }
+    if (showVehiclePicker && makes.length === 0) {
+      getVehicleMakes().then(setMakes).catch(() => {});
     }
-    console.log('[route-select] directions_json present?', pendingJson != null, 'source=', backendJson ? 'backend' : 'synth');
-    setPendingDirectionsJson(pendingJson);
-    router.push({
-      pathname: '/navigate',
-      params: {
-        polyline:      route.polyline,
-        label:         route.label,
-        destLat:       String(destLat),
-        destLng:       String(destLng),
-        originLat:     String(originLat),
-        originLng:     String(originLng),
-        destAddress:   params.destAddress ?? '',
-        originAddress: 'Current Location',
-        vehicleId:     selectedVehicle.id,
-        fuelType:      selectedVehicle.vehicle_type,
-        durationSec:   String(route.duration_sec),
-        distanceKm:    String(route.distance_km),
-      },
-    });
-  }, [selectedVehicle, routes, selectedRouteIdx, destLat, destLng, originLat, originLng, params.destAddress, router]);
+  }, [showVehiclePicker, makes.length]);
+
+  useEffect(() => {
+    if (!selectedMake) return;
+    setModels([]); setSelectedModel(null);
+    setVariants([]); setSelectedVariant(null);
+    getVehicleModels(selectedMake).then(setModels).catch(() => {});
+  }, [selectedMake]);
+
+  useEffect(() => {
+    if (!selectedMake || !selectedModel) return;
+    setVariants([]); setSelectedVariant(null);
+    getVehicleVariants(selectedMake, selectedModel).then(setVariants).catch(() => {});
+  }, [selectedMake, selectedModel]);
+
+  const handleConfirmVehicle = useCallback(() => {
+    if (!selectedMake || !selectedModel || !selectedVariant) return;
+    setConfirmedVehicle({ make: selectedMake, model: selectedModel, variant: selectedVariant });
+    setShowVehiclePicker(false);
+  }, [selectedMake, selectedModel, selectedVariant]);
+
+  const handleStartTrip = useCallback(async () => {
+    if (!confirmedVehicle || !routes[selectedRouteIdx]) return;
+    setStartingTrip(true);
+    try {
+      let vehicleId = confirmedVehicle.vehicleId;
+      if (!vehicleId) {
+        const vehicle = await createVehicle({
+          make:            confirmedVehicle.make,
+          model:           confirmedVehicle.model,
+          year:            confirmedVehicle.variant.year,
+          vehicle_type:    confirmedVehicle.variant.vehicle_type,
+          vehicle_mass_kg: confirmedVehicle.variant.vehicle_mass_kg,
+          drivetrain_type: confirmedVehicle.variant.drivetrain_type,
+        });
+        vehicleId = vehicle.id;
+      }
+
+      await createTrip({
+        vehicle_id:     vehicleId,
+        started_at:     new Date().toISOString(),
+        origin_lat:     originLat,
+        origin_lng:     originLng,
+        dest_lat:       destLat,
+        dest_lng:       destLng,
+        fuel_type:      confirmedVehicle.variant.vehicle_type,
+        origin_address: 'Current Location',
+        dest_address:   params.destAddress,
+        route_polyline: routes[selectedRouteIdx]?.polyline,
+      });
+
+      router.back();
+    } catch (err: any) {
+      console.error('[Trip] Error:', err.response?.data ?? err.message);
+    } finally {
+      setStartingTrip(false);
+    }
+  }, [confirmedVehicle, routes, selectedRouteIdx, originLat, originLng, destLat, destLng, params.destAddress, router]);
 
   const selectedRoute = routes[selectedRouteIdx];
 
@@ -328,45 +346,40 @@ export default function RouteSelectScreen() {
               )}
 
               {/* Vehicle row */}
-              <TouchableOpacity
-                style={styles.vehicleRow}
-                onPress={() => setShowVehiclePicker(true)}
-                disabled={vehicles.length === 0}
-              >
+              <TouchableOpacity style={styles.vehicleRow} onPress={() => setShowVehiclePicker(true)}>
                 <View style={styles.vehicleIcon}>
                   <MaterialIcons color="#1B2B45" name="directions-car" size={22} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  {selectedVehicle ? (
+                  {confirmedVehicle ? (
                     <>
-                      <Text style={styles.vehicleName}>
-                        {selectedVehicle.make} {selectedVehicle.model}
-                      </Text>
+                      <Text style={styles.vehicleName}>{confirmedVehicle.make} {confirmedVehicle.model}</Text>
                       <Text style={styles.vehicleVariant}>
-                        {selectedVehicle.year} · {selectedVehicle.vehicle_type}
-                        {selectedVehicle.is_default ? ' · Default' : ''}
+                        {confirmedVehicle.variant.variant} · {confirmedVehicle.variant.year}
                       </Text>
                     </>
                   ) : (
-                    <Text style={styles.vehiclePlaceholder}>
-                      {vehicles.length === 0 ? 'No vehicles — add one in your profile' : 'Select your vehicle'}
-                    </Text>
+                    <Text style={styles.vehiclePlaceholder}>Select your vehicle</Text>
                   )}
                 </View>
-                {vehicles.length > 1 && (
-                  <MaterialIcons color="#9CA3AF" name="chevron-right" size={22} />
-                )}
+                <MaterialIcons color="#9CA3AF" name="chevron-right" size={22} />
               </TouchableOpacity>
 
               {/* Go now CTA */}
               <TouchableOpacity
                 activeOpacity={0.9}
-                style={[styles.ctaBtn, !selectedVehicle && styles.ctaBtnDisabled]}
+                style={[styles.ctaBtn, (!confirmedVehicle || startingTrip) && styles.ctaBtnDisabled]}
                 onPress={handleStartTrip}
-                disabled={!selectedVehicle}
+                disabled={!confirmedVehicle || startingTrip}
               >
-                <MaterialIcons color="#FFFFFF" name="navigation" size={18} />
-                <Text style={styles.ctaText}>Go now</Text>
+                {startingTrip ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <>
+                    <MaterialIcons color="#FFFFFF" name="navigation" size={18} />
+                    <Text style={styles.ctaText}>Go now</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </>
           )}
@@ -388,40 +401,92 @@ export default function RouteSelectScreen() {
             </TouchableOpacity>
           </View>
 
-          <FlatList
-            data={vehicles}
-            keyExtractor={(v) => v.id}
-            contentContainerStyle={{ padding: 16 }}
-            renderItem={({ item }) => {
-              const active = item.id === selectedVehicleId;
-              return (
-                <TouchableOpacity
-                  style={[styles.vehicleOption, active && styles.vehicleOptionActive]}
-                  onPress={() => {
-                    setSelectedVehicleId(item.id);
-                    setShowVehiclePicker(false);
-                  }}
-                >
-                  <View style={styles.vehicleIcon}>
-                    <MaterialIcons color="#1B2B45" name="directions-car" size={22} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.vehicleName}>{item.make} {item.model}</Text>
-                    <Text style={styles.vehicleVariant}>
-                      {item.year} · {item.vehicle_type}
-                      {item.is_default ? ' · Default' : ''}
+          <View style={styles.pickerContainer}>
+            <View style={styles.pickerColumn}>
+              <Text style={styles.pickerLabel}>Make</Text>
+              <FlatList
+                data={makes}
+                keyExtractor={(item) => item}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[styles.pickerItem, selectedMake === item && styles.pickerItemActive]}
+                    onPress={() => setSelectedMake(item)}
+                  >
+                    <Text
+                      style={[styles.pickerItemText, selectedMake === item && styles.pickerItemTextActive]}
+                      numberOfLines={1}
+                    >
+                      {item}
                     </Text>
-                  </View>
-                  {active && <MaterialIcons color="#1B2B45" name="check" size={22} />}
-                </TouchableOpacity>
-              );
-            }}
-            ListEmptyComponent={
-              <Text style={styles.emptyVehicles}>
-                You have no vehicles yet. Add one in your profile to start a trip.
-              </Text>
-            }
-          />
+                  </TouchableOpacity>
+                )}
+              />
+            </View>
+
+            <View style={styles.pickerColumn}>
+              <Text style={styles.pickerLabel}>Model</Text>
+              <FlatList
+                data={models}
+                keyExtractor={(item) => item}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[styles.pickerItem, selectedModel === item && styles.pickerItemActive]}
+                    onPress={() => setSelectedModel(item)}
+                  >
+                    <Text
+                      style={[styles.pickerItemText, selectedModel === item && styles.pickerItemTextActive]}
+                      numberOfLines={1}
+                    >
+                      {item}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <Text style={styles.pickerEmpty}>{selectedMake ? 'Loading...' : 'Pick a make'}</Text>
+                }
+              />
+            </View>
+
+            <View style={styles.pickerColumn}>
+              <Text style={styles.pickerLabel}>Variant</Text>
+              <FlatList
+                data={variants}
+                keyExtractor={(item) => item.variant}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[styles.pickerItem, selectedVariant?.variant === item.variant && styles.pickerItemActive]}
+                    onPress={() => setSelectedVariant(item)}
+                  >
+                    <Text
+                      style={[styles.pickerItemText, selectedVariant?.variant === item.variant && styles.pickerItemTextActive]}
+                      numberOfLines={2}
+                    >
+                      {item.variant}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                ListEmptyComponent={
+                  <Text style={styles.pickerEmpty}>{selectedModel ? 'Loading...' : 'Pick a model'}</Text>
+                }
+              />
+            </View>
+          </View>
+
+          <View style={styles.modalFooter}>
+            <TouchableOpacity
+              style={[
+                styles.confirmBtn,
+                (!selectedMake || !selectedModel || !selectedVariant) && styles.confirmBtnDisabled,
+              ]}
+              onPress={handleConfirmVehicle}
+              disabled={!selectedMake || !selectedModel || !selectedVariant}
+            >
+              <Text style={styles.confirmBtnText}>Confirm Vehicle</Text>
+            </TouchableOpacity>
+          </View>
         </SafeAreaView>
       </Modal>
     </View>
@@ -538,17 +603,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20, paddingVertical: 16,
     borderBottomWidth: 1, borderBottomColor: '#F3F4F6',
   },
-  modalTitle: { fontSize: 18, fontWeight: '800', color: '#111827' },
-
-  vehicleOption: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 14, padding: 12, marginBottom: 10,
-    borderWidth: 1, borderColor: '#F3F4F6',
+  modalTitle:      { fontSize: 18, fontWeight: '800', color: '#111827' },
+  pickerContainer: { flex: 1, flexDirection: 'row', paddingHorizontal: 8 },
+  pickerColumn:    { flex: 1, paddingHorizontal: 4 },
+  pickerLabel: {
+    fontSize: 12, fontWeight: '700', color: '#6B7280',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+    paddingHorizontal: 8, paddingVertical: 10,
   },
-  vehicleOptionActive: { borderColor: '#1B2B45', borderWidth: 2 },
-  emptyVehicles: {
-    fontSize: 14, color: '#6B7280', textAlign: 'center',
-    paddingVertical: 40, paddingHorizontal: 20, lineHeight: 20,
+  pickerItem: {
+    paddingHorizontal: 10, paddingVertical: 11,
+    borderRadius: 10, marginBottom: 4,
   },
+  pickerItemActive:    { backgroundColor: '#1B2B45' },
+  pickerItemText:      { fontSize: 13, color: '#374151', fontWeight: '500' },
+  pickerItemTextActive:{ color: '#FFFFFF', fontWeight: '700' },
+  pickerEmpty:         { fontSize: 12, color: '#9CA3AF', textAlign: 'center', paddingTop: 20 },
+  modalFooter:         { padding: 20, borderTopWidth: 1, borderTopColor: '#F3F4F6' },
+  confirmBtn: {
+    backgroundColor: '#1B2B45',
+    borderRadius: 14, height: 52,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  confirmBtnDisabled: { opacity: 0.4 },
+  confirmBtnText:     { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
 });
