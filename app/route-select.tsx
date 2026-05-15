@@ -41,6 +41,10 @@ function formatDuration(sec: number): string {
   return `${m} min`;
 }
 
+function capitalise(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function decodePolyline(encoded: string | null | undefined): [number, number][] {
   if (!encoded) return [];
   try {
@@ -173,7 +177,7 @@ export default function RouteSelectScreen() {
         originLat:     String(originLat),
         originLng:     String(originLng),
         destAddress:   params.destAddress ?? '',
-        originAddress: 'Current Location',
+        destName:      params.destName ?? '',
         vehicleId:     selectedVehicle.id,
         fuelType:      selectedVehicle.vehicle_type,
         durationSec:   String(route.duration_sec),
@@ -308,6 +312,11 @@ export default function RouteSelectScreen() {
                         {r.distance_km.toFixed(1)} km
                         {r.energy_kwh != null ? ` · ${(r.energy_kwh * 0.2496).toFixed(1)} kg CO₂` : ''}
                       </Text>
+                      {r.merged_with.length > 0 && (
+                        <Text style={styles.chipAlso} numberOfLines={1}>
+                          also {r.merged_with.join(', ')}
+                        </Text>
+                      )}
                     </View>
                   </TouchableOpacity>
                 ))}
@@ -316,9 +325,16 @@ export default function RouteSelectScreen() {
               {/* Selected route detail */}
               {selectedRoute && (
                 <View style={styles.detailRow}>
-                  <Text style={styles.detailTitle}>
-                    {selectedRoute.label.charAt(0).toUpperCase() + selectedRoute.label.slice(1)} Route
-                  </Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.detailTitle}>
+                      {capitalise(selectedRoute.label)} Route
+                    </Text>
+                    {selectedRoute.merged_with.length > 0 && (
+                      <Text style={styles.detailOverlap}>
+                        Same path as {selectedRoute.merged_with.map(capitalise).join(' & ')}
+                      </Text>
+                    )}
+                  </View>
                   {selectedRoute.label === 'eco' && (
                     <View style={styles.badge}>
                       <Text style={styles.badgeText}>Most Eco</Text>
@@ -494,13 +510,15 @@ const styles = StyleSheet.create({
   },
   chipTime: { fontSize: 14, fontWeight: '800', color: '#111827' },
   chipMeta: { fontSize: 10, color: '#6B7280', marginTop: 1 },
+  chipAlso: { fontSize: 10, color: '#16A34A', fontWeight: '700', marginTop: 2 },
 
   // Detail row
   detailRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     marginBottom: 12,
   },
-  detailTitle: { fontSize: 16, fontWeight: '800', color: '#111827' },
+  detailTitle:   { fontSize: 16, fontWeight: '800', color: '#111827' },
+  detailOverlap: { fontSize: 12, color: '#6B7280', marginTop: 2, fontWeight: '600' },
   badge:       { backgroundColor: '#DCFCE7', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   badgeText:   { color: '#16A34A', fontSize: 11, fontWeight: '700' },
 

@@ -69,6 +69,8 @@ export interface AuthUser {
   id: string;
   email: string | null;
   display_name: string | null;
+  avatar_url?: string | null;
+  total_co2_kg?: number | null;
 }
 
 export interface AuthSession {
@@ -148,6 +150,17 @@ export interface PlaceSuggestion {
   lng: number;
 }
 
+export async function reverseGeocode(
+  lat: number,
+  lng: number,
+): Promise<{ name: string | null; address: string | null }> {
+  const { data } = await api.get<{
+    success: true;
+    data: { name: string | null; address: string | null };
+  }>('/places/reverse-geocode', { params: { lat, lng } });
+  return data.data;
+}
+
 export async function autocomplete(
   query: string,
   proximity_lat?: number,
@@ -166,6 +179,7 @@ export type RouteLabel = 'eco' | 'balanced' | 'fastest';
 
 export interface RouteOption {
   label: RouteLabel;
+  merged_with: RouteLabel[];
   distance_km: number;
   duration_sec: number;
   energy_kwh: number | null;
@@ -194,6 +208,7 @@ export async function searchRoutes(params: RouteSearchParams): Promise<RouteOpti
     `[routes/search] ← ${options.length} option(s):`,
     options.map((o) => ({
       label: o.label,
+      merged_with: o.merged_with,
       distance_km: o.distance_km,
       duration_sec: o.duration_sec,
       energy_kwh: o.energy_kwh,
@@ -284,6 +299,17 @@ export async function getVehicles(): Promise<Vehicle[]> {
   return data.data;
 }
 
+export const getUserVehicles = getVehicles;
+
+export async function deleteVehicle(id: string): Promise<void> {
+  await api.delete(`/vehicles/${id}`);
+}
+
+export async function setDefaultVehicle(id: string): Promise<Vehicle> {
+  const { data } = await api.patch<{ success: true; data: Vehicle }>(`/vehicles/${id}/default`);
+  return data.data;
+}
+
 // --- Trips ---
 
 export type TripStatus = 'active' | 'ended' | 'cancelled';
@@ -300,9 +326,11 @@ export interface Trip {
   origin_lat: number;
   origin_lng: number;
   origin_address: string | null;
+  origin_name: string | null;
   dest_lat: number;
   dest_lng: number;
   dest_address: string | null;
+  dest_name: string | null;
   route_polyline: string | null;
   fuel_type: string;
   distance_km: number | null;
@@ -320,9 +348,11 @@ export interface CreateTripBody {
   origin_lat: number;
   origin_lng: number;
   origin_address?: string;
+  origin_name?: string;
   dest_lat: number;
   dest_lng: number;
   dest_address?: string;
+  dest_name?: string;
   route_polyline?: string;
   fuel_type: string;
 }
@@ -423,10 +453,95 @@ export async function getFeedbackForTrip(trip_id: string): Promise<FeedbackEvent
   const { data } = await api.get<{ success: true; data: FeedbackEvent[] }>(
     `/feedback/trip/${trip_id}`,
   );
-  return data.data;
+  return data.data ?? [];
 }
 
-export async function getTrips(): Promise<Trip[]> {
-  const { data } = await api.get<{ success: true; data: Trip[] }>('/trips');
-  return data.data;
+// --- Telemetry segments ---
+
+export type BehaviourLabel = 'smooth' | 'moderate' | 'aggressive';
+export type EfficiencyLabel = 'optimal' | 'suboptimal';
+
+export interface TelemetrySegment {
+  id: string;
+  trip_id: string;
+  segment_index: number;
+  started_at: string;
+  ended_at: string;
+  avg_speed_kmh: number;
+  speed_variance: number | null;
+  accel_variance: number;
+  braking_frequency: number;
+  idle_time_pct: number;
+  behaviour_label: BehaviourLabel | null;
+  confidence: number | null;
+  xgboost_efficiency_label: EfficiencyLabel | null;
+  shap_top_feature: string | null;
+
+  polyline: string | null;
+  start_lat: number | null;
+  start_lng: number | null;
+  end_lat: number | null;
+  end_lng: number | null;
+
+  created_at: string;
+}
+
+export async function getSegmentsForTrip(trip_id: string): Promise<TelemetrySegment[]> {
+  const { data } = await api.get<{ success: true; data: TelemetrySegment[] }>(
+    `/segments/trip/${trip_id}`,
+  );
+  return data.data ?? [];
+}
+
+export interface TripPagination {
+  page: number;
+  limit: number;
+  total: number;
+  total_pages: number;
+}
+
+export interface TripPage {
+  trips: Trip[];
+  pagination: TripPagination;
+}
+
+export interface TripStats {
+  total_trips: number;
+  total_distance_km: number;
+  total_duration_sec: number;
+  total_co2_kg: number;
+}
+
+export async function getTripStats(opts?: { since?: string }): Promise<TripStats> {
+  const params = opts?.since ? { since: opts.since } : undefined;
+  const { data } = await api.get<{ success: true; data: TripStats }>(
+    '/trips/stats',
+    { params },
+  );
+  return {
+    total_trips:        data.data?.total_trips        ?? 0,
+    total_distance_km:  data.data?.total_distance_km  ?? 0,
+    total_duration_sec: data.data?.total_duration_sec ?? 0,
+    total_co2_kg:       data.data?.total_co2_kg       ?? 0,
+  };
+}
+
+export async function getTrips(page = 1, limit = 20): Promise<TripPage> {
+  const { data } = await api.get<{
+    success: true;
+    data: { data?: Trip[]; pagination?: TripPagination } | Trip[];
+  }>('/trips', { params: { page, limit } });
+
+  // Backend currently wraps: { success, data: { data: [...], pagination: {...} } }
+  // Defensive: also accept plain array { success, data: [...] }
+  const raw = data.data as any;
+  const trips: Trip[] = Array.isArray(raw) ? raw : (raw?.data ?? []);
+  const pagination: TripPagination = (raw?.pagination) ?? {
+    page,
+    limit,
+    total: trips.length,
+    total_pages: 1,
+  };
+
+  return { trips, pagination };
 }

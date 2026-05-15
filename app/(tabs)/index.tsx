@@ -89,8 +89,8 @@ export default function HomeScreen() {
 
   // Load recent trip destinations
   useFocusEffect(useCallback(() => {
-    getTrips()
-      .then((trips: Trip[]) => {
+    getTrips(1, 20)
+      .then(({ trips }: { trips: Trip[] }) => {
         const seen = new Set<string>();
         const recent: RecentPlace[] = [];
         for (const t of trips) {
@@ -98,7 +98,7 @@ export default function HomeScreen() {
           if (seen.has(key)) continue;
           seen.add(key);
           recent.push({
-            name:    t.dest_address?.split(',')[0] ?? 'Destination',
+            name:    t.dest_name ?? t.dest_address?.split(',')[0] ?? 'Destination',
             address: t.dest_address ?? `${t.dest_lat.toFixed(4)}, ${t.dest_lng.toFixed(4)}`,
             lat:     t.dest_lat,
             lng:     t.dest_lng,
@@ -131,6 +131,8 @@ export default function HomeScreen() {
   }, [destQuery, userCoords]);
 
   const goToRouteSelect = useCallback((p: { name: string; address: string; lat: number; lng: number }) => {
+    setDestQuery('');
+    setSuggestions([]);
     router.push({
       pathname: '/route-select',
       params: {

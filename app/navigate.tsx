@@ -40,6 +40,7 @@ export default function NavigateScreen() {
     originLat?: string;
     originLng?: string;
     destAddress?: string;
+    destName?: string;
     originAddress?: string;
     vehicleId?: string;
     fuelType?: string;
@@ -86,6 +87,10 @@ export default function NavigateScreen() {
   const tripStartAttemptedRef = useRef(false);
   const arrivedRef = useRef(false);
 
+  const ARRIVAL_AUTO_DISMISS_SEC = 8;
+  const [arrived, setArrived] = useState(false);
+  const [arrivalCountdown, setArrivalCountdown] = useState(ARRIVAL_AUTO_DISMISS_SEC);
+
   useEffect(() => {
     if (!isValid || coordinates.length < 2) return;
     if (tripStartAttemptedRef.current) return;
@@ -111,6 +116,7 @@ export default function NavigateScreen() {
           destLng: dest.lng,
           originAddress: params.originAddress,
           destAddress: params.destAddress,
+          destName: params.destName,
           routePolyline: params.polyline,
           vehicleId: params.vehicleId,
           fuelType: params.fuelType,
@@ -129,15 +135,31 @@ export default function NavigateScreen() {
     };
   }, [tripId, cancel]);
 
+  const goHome = useCallback(() => {
+    router.replace('/(tabs)');
+  }, [router]);
+
   const handleArrival = useCallback(async () => {
     arrivedRef.current = true;
+    setArrived(true);
+    setArrivalCountdown(ARRIVAL_AUTO_DISMISS_SEC);
     try {
       await end();
     } catch (err) {
       console.warn('[navigate] end trip failed', (err as Error).message);
     }
-    router.back();
-  }, [end, router]);
+  }, [end]);
+
+  // Countdown ticker for the arrival overlay; auto-dismiss to home at 0.
+  useEffect(() => {
+    if (!arrived) return;
+    if (arrivalCountdown <= 0) {
+      goHome();
+      return;
+    }
+    const t = setTimeout(() => setArrivalCountdown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [arrived, arrivalCountdown, goHome]);
 
   const handleCancel = useCallback(async () => {
     arrivedRef.current = true;
@@ -146,7 +168,7 @@ export default function NavigateScreen() {
     } catch (err) {
       console.warn('[navigate] cancel trip failed', (err as Error).message);
     }
-    router.back();
+    router.replace('/(tabs)');
   }, [cancel, router]);
 
   const handleRouteFailed = useCallback(
@@ -324,6 +346,28 @@ export default function NavigateScreen() {
         onRouteChanged={handleRouteChanged}
       />
       <FeedbackBanner items={feedback} onDismiss={dismissFeedback} />
+
+      {arrived && (
+        <View style={styles.arrivedOverlay} pointerEvents="box-none">
+          <SafeAreaView edges={['bottom']} style={styles.arrivedSafe} pointerEvents="box-none">
+            <View style={styles.arrivedCard}>
+              <View style={styles.arrivedIconWrap}>
+                <MaterialIcons color="#16A34A" name="check-circle" size={48} />
+              </View>
+              <Text style={styles.arrivedTitle}>You&apos;ve arrived</Text>
+              {params.destName ? (
+                <Text style={styles.arrivedSub} numberOfLines={2}>{params.destName}</Text>
+              ) : null}
+              <Pressable style={styles.doneBtn} onPress={goHome}>
+                <Text style={styles.doneBtnText}>
+                  Done{arrivalCountdown > 0 ? ` · ${arrivalCountdown}s` : ''}
+                </Text>
+              </Pressable>
+              <Text style={styles.arrivedHint}>Returning to home automatically</Text>
+            </View>
+          </SafeAreaView>
+        </View>
+      )}
     </View>
   );
 }
@@ -339,6 +383,42 @@ const styles = StyleSheet.create({
   },
   errorTitle: { fontSize: 20, fontWeight: '800', color: '#111827' },
   errorText: { fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 20 },
+
+  // Arrival overlay — anchored to the bottom so it doesn't hide the map.
+  arrivedOverlay: {
+    position: 'absolute',
+    left: 0, right: 0, bottom: 0,
+    zIndex: 200,
+  },
+  arrivedSafe: { paddingHorizontal: 16, paddingBottom: 12 },
+  arrivedCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 24,
+    shadowOffset: { width: 0, height: -4 }, elevation: 12,
+  },
+  arrivedIconWrap: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 12,
+  },
+  arrivedTitle: { fontSize: 22, fontWeight: '800', color: '#111827' },
+  arrivedSub: {
+    fontSize: 14, color: '#6B7280', marginTop: 4,
+    textAlign: 'center', maxWidth: '90%',
+  },
+  doneBtn: {
+    marginTop: 20, alignSelf: 'stretch',
+    backgroundColor: '#16A34A',
+    borderRadius: 14, height: 52,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  doneBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
+  arrivedHint: { fontSize: 12, color: '#9CA3AF', marginTop: 10 },
+
   errorBtn: {
     marginTop: 16,
     backgroundColor: '#1B2B45',

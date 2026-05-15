@@ -19,6 +19,7 @@ import {
   FuelType,
   getTrip,
   postTelemetry,
+  reverseGeocode,
   Trip,
   TripInactiveError,
 } from '@/lib/api';
@@ -46,7 +47,9 @@ interface StartTripArgs {
   destLat: number;
   destLng: number;
   originAddress?: string;
+  originName?: string;
   destAddress?: string;
+  destName?: string;
   routePolyline?: string;
   vehicleId?: string;
   fuelType?: string;
@@ -220,16 +223,20 @@ export function ActiveTripProvider({ children }: { children: React.ReactNode }) 
         const accessToken = await SecureStore.getItemAsync('access_token');
         setSupabaseAccessToken(accessToken);
 
+        const geocoded = await reverseGeocode(args.originLat, args.originLng).catch(() => null);
+
         const trip = await createTrip({
           vehicle_id: vehicleId,
           fuel_type: fuelType,
           started_at: new Date().toISOString(),
           origin_lat: args.originLat,
           origin_lng: args.originLng,
-          origin_address: args.originAddress,
+          origin_address: args.originAddress ?? geocoded?.address ?? undefined,
+          origin_name: geocoded?.name ?? undefined,
           dest_lat: args.destLat,
           dest_lng: args.destLng,
           dest_address: args.destAddress,
+          dest_name: args.destName,
           route_polyline: args.routePolyline,
         });
 

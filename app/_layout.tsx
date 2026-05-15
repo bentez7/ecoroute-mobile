@@ -84,6 +84,8 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="(auth)" options={{ headerShown: false }} />
             <Stack.Screen name="route-select" options={{ headerShown: false }} />
+            <Stack.Screen name="my-vehicles" options={{ headerShown: false }} />
+            <Stack.Screen name="trip-detail" options={{ headerShown: false }} />
             <Stack.Screen
               name="navigate"
               options={{ headerShown: false, animation: 'slide_from_bottom' }}
