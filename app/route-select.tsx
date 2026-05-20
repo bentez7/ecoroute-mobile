@@ -14,16 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import {
-  createTrip,
-  createVehicle,
-  getVehicleMakes,
-  getVehicleModels,
-  getVehicleVariants,
-  searchRoutes,
-  type RouteOption,
-  type VehicleVariant,
-} from '@/lib/api';
+import { api, type RouteOption, type VehicleVariant } from '@/lib/api';
 
 type ConfirmedVehicle = {
   make: string;
@@ -111,7 +102,7 @@ export default function RouteSelectScreen() {
   useEffect(() => {
     let cancelled = false;
     setLoadingRoutes(true);
-    searchRoutes(originLat, originLng, destLat, destLng)
+    api.routes.search(originLat, originLng, destLat, destLng)
       .then(results => {
         if (cancelled) return;
         setRoutes(results);
@@ -147,7 +138,7 @@ export default function RouteSelectScreen() {
   // Vehicle picker data
   useEffect(() => {
     if (showVehiclePicker && makes.length === 0) {
-      getVehicleMakes().then(setMakes).catch(() => {});
+      api.vehicles.getMakes().then(setMakes).catch(() => {});
     }
   }, [showVehiclePicker, makes.length]);
 
@@ -155,13 +146,13 @@ export default function RouteSelectScreen() {
     if (!selectedMake) return;
     setModels([]); setSelectedModel(null);
     setVariants([]); setSelectedVariant(null);
-    getVehicleModels(selectedMake).then(setModels).catch(() => {});
+    api.vehicles.getModels(selectedMake).then(setModels).catch(() => {});
   }, [selectedMake]);
 
   useEffect(() => {
     if (!selectedMake || !selectedModel) return;
     setVariants([]); setSelectedVariant(null);
-    getVehicleVariants(selectedMake, selectedModel).then(setVariants).catch(() => {});
+    api.vehicles.getVariants(selectedMake, selectedModel).then(setVariants).catch(() => {});
   }, [selectedMake, selectedModel]);
 
   const handleConfirmVehicle = useCallback(() => {
@@ -176,7 +167,7 @@ export default function RouteSelectScreen() {
     try {
       let vehicleId = confirmedVehicle.vehicleId;
       if (!vehicleId) {
-        const vehicle = await createVehicle({
+        const vehicle = await api.vehicles.create({
           make:            confirmedVehicle.make,
           model:           confirmedVehicle.model,
           year:            confirmedVehicle.variant.year,
@@ -187,7 +178,7 @@ export default function RouteSelectScreen() {
         vehicleId = vehicle.id;
       }
 
-      await createTrip({
+      await api.trips.create({
         vehicle_id:     vehicleId,
         started_at:     new Date().toISOString(),
         origin_lat:     originLat,

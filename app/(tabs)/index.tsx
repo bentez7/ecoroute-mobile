@@ -18,12 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/auth';
-import {
-  autocomplete,
-  getTrips,
-  type PlaceSuggestion,
-  type Trip,
-} from '@/lib/api';
+import { api, type PlaceSuggestion, type Trip } from '@/lib/api';
 
 type RecentPlace = {
   name: string;
@@ -89,7 +84,7 @@ export default function HomeScreen() {
 
   // Load recent trip destinations
   useFocusEffect(useCallback(() => {
-    getTrips()
+    api.trips.list()
       .then((trips: Trip[]) => {
         const seen = new Set<string>();
         const recent: RecentPlace[] = [];
@@ -118,7 +113,7 @@ export default function HomeScreen() {
     debounceRef.current = setTimeout(async () => {
       try {
         setLoadingSuggestions(true);
-        const results = await autocomplete(destQuery, userCoords[1], userCoords[0]);
+        const results = await api.places.autocomplete(destQuery, userCoords[1], userCoords[0]);
         setSuggestions(results);
       } catch {
         setSuggestions([]);
