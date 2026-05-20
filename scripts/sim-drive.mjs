@@ -9,16 +9,33 @@
 //                                                    # ML hard_brake / hard_accel
 //                                                    # alerts (default polyline)
 //   node scripts/sim-drive.mjs --phases '<polyline>' # phased drive on custom poly
+//   node scripts/sim-drive.mjs --control             # live speed control via
+//                                                    # browser at http://localhost:7777
+//   node scripts/sim-drive.mjs --control '<poly>'    # control mode on custom poly
 //
-// Stop early with: xcrun simctl location booted clear
+// Stop early with: Ctrl-C  (or: xcrun simctl location booted clear)
 
 import { spawn } from 'node:child_process';
+import http from 'node:http';
 import polyline from '@mapbox/polyline';
 
 const DEFAULT_POLYLINE =
   'cgtQ{tckR?~@?fL@zC@vC@bJ@`@?Z?D?l@?n@?z@?hD@vBAlB?fD?D?bB@d@?N?V@T@P@H@DDLFNJPpCvC^p@Pl@DZ@H@FBNA^S?M?_B?qA@gAAiBAk@C{@Me@MuCy@sAa@u@Ws@Wk@Oc@Ie@Eo@Cw@?{GEmLAG?wH?kj@CsRA_JA_J@}DBsB@yBFsIAw@B[B]JYL_@TOLe@b@Sb@q@fAw@pA]h@o@x@c@Zk@X}@XmANk@@o@B[K]WQYI]?]DQHWPUJKVOVGb@?r@BpA@`A?l@?b@E\\Gz@[n@e@\\e@Zm@f@a@~DcJn@oCJi@RWn@wFj@wFdBqOJ_B?m@@yDCsD?q@[wAAWEkEAqBCwBAcAA[AGISKQUOSGOAI?I?ODIBKFIFyDfEYLYDWAUI}CiBqBmAe@UQKWKYMOAa@GsGDqA?aBFmAAg@?MAOAcACKAKAA?IAMAQAe@GYC[?wCAmBAeA?oAAcC@gB?yBA{O?oD?_C@{AAk@CcAMw@Qe@QqBaAi@YMIiHqD}JgF]AW@SDW?WEQOMMMQGWGUU_@aCoAIEo@I{ASmFu@mCa@y@MsAQC?AAUCGAG?I?KEIECCCCDWL{@J_APqAiAOq@Ts@Tk@gBg@wA_Bw@m@[a@SqAo@aBy@cAi@o@[MIa@SyAaAqB}AwBeBaCiBm@e@k@c@k@c@g@_@vBqCpBiCHK';
 
 const MAX_WAYPOINTS = 100;
+
+const CONTROL_PORT = 7777;
+const CONTROL_URL  = `http://127.0.0.1:${CONTROL_PORT}`;
+
+// Speed presets for --control mode. Flipping between hard_accel and hard_brake
+// produces |Δ| ≫ 2 m/s² across an ML window — well past the hard_accel /
+// hard_brake feature gates, so the window classifies as 'aggressive'.
+const PRESETS = {
+  idle:        1,
+  cruise:     8,
+  hard_accel: 22,
+  hard_brake:  4,
+};
 
 function sample(coords, max) {
   if (coords.length <= max) return coords;
@@ -72,11 +89,18 @@ function runStart(speed, coordPairs) {
   ];
   return new Promise((resolve, reject) => {
     const child = spawn('xcrun', args, { stdio: 'inherit' });
-    process.once('SIGINT',  () => child.kill('SIGINT'));
-    process.once('SIGTERM', () => child.kill('SIGTERM'));
-    child.on('exit', (code) =>
-      code === 0 || code === null ? resolve() : reject(new Error(`simctl exited ${code}`)),
-    );
+    // Remove these listeners on exit — runControlledDrive invokes runStart many
+    // times and would otherwise hit Node's MaxListenersExceededWarning.
+    const onSigint  = () => child.kill('SIGINT');
+    const onSigterm = () => child.kill('SIGTERM');
+    process.once('SIGINT',  onSigint);
+    process.once('SIGTERM', onSigterm);
+    child.on('exit', (code) => {
+      process.off('SIGINT',  onSigint);
+      process.off('SIGTERM', onSigterm);
+      if (code === 0 || code === null) resolve();
+      else reject(new Error(`simctl exited ${code}`));
+    });
   });
 }
 
@@ -158,6 +182,149 @@ async function runPhasedDrive(encoded) {
   await clearLocation();
 }
 
+// --- Control mode (live speed control via browser) ---
+
+const CONTROL_PAGE = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>sim-drive control</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; margin: 0;
+         padding: 28px; background: #0f172a; color: #f1f5f9; min-height: 100vh; }
+  h1 { font-size: 13px; margin: 0 0 6px; color: #94a3b8; font-weight: 500;
+       text-transform: uppercase; letter-spacing: 1.5px; }
+  .speed { font-size: 68px; font-weight: 700; margin: 0 0 28px; letter-spacing: -2px; }
+  .speed small { font-size: 22px; color: #64748b; font-weight: 400; margin-left: 10px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 520px; }
+  button { padding: 26px 16px; font-size: 17px; font-weight: 600; border: 0;
+           border-radius: 14px; color: white; cursor: pointer; transition: transform .06s; }
+  button:active { transform: scale(0.97); }
+  .b-cruise     { background: #16a34a; }
+  .b-idle       { background: #2563eb; }
+  .b-hard_accel { background: #ea580c; }
+  .b-hard_brake { background: #dc2626; }
+  .b-stop       { grid-column: 1 / -1; background: #475569; }
+  .preset { font-size: 12px; opacity: 0.75; font-weight: 400; display: block; margin-top: 4px; }
+</style>
+</head>
+<body>
+  <h1>sim-drive control</h1>
+  <p class="speed"><span id="cur">12</span><small>m/s</small></p>
+  <div class="grid">
+    <button class="b-cruise"     data-preset="cruise">Cruise<span class="preset">12 m/s — smooth</span></button>
+    <button class="b-idle"       data-preset="idle">Idle<span class="preset">1 m/s — stopped</span></button>
+    <button class="b-hard_accel" data-preset="hard_accel">Hard Accel<span class="preset">22 m/s — aggressive</span></button>
+    <button class="b-hard_brake" data-preset="hard_brake">Hard Brake<span class="preset">4 m/s — aggressive</span></button>
+    <button class="b-stop"       data-stop="1">Stop drive</button>
+  </div>
+<script>
+const cur = document.getElementById('cur');
+async function send(preset) {
+  const r = await fetch('/speed', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ preset }),
+  });
+  const j = await r.json();
+  if (j.ok) cur.textContent = j.speed;
+}
+async function stop() {
+  await fetch('/stop', { method: 'POST' });
+  cur.textContent = 'stopped';
+}
+for (const btn of document.querySelectorAll('button[data-preset]')) {
+  btn.addEventListener('click', () => send(btn.dataset.preset));
+}
+document.querySelector('button[data-stop]').addEventListener('click', stop);
+</script>
+</body>
+</html>`;
+
+function startControlServer(state) {
+  const server = http.createServer(async (req, res) => {
+    if (req.method === 'GET' && req.url === '/') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end(CONTROL_PAGE);
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/speed') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      try {
+        const { preset } = JSON.parse(body || '{}');
+        if (!(preset in PRESETS)) {
+          res.writeHead(400, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'unknown preset' }));
+          return;
+        }
+        state.speed = PRESETS[preset];
+        console.log(`[control] speed → ${state.speed} m/s (${preset})`);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, preset, speed: state.speed }));
+      } catch {
+        res.writeHead(400, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'bad json' }));
+      }
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/stop') {
+      state.stopped = true;
+      console.log('[control] stop requested');
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  server.listen(CONTROL_PORT, '127.0.0.1');
+  return server;
+}
+
+async function runControlledDrive(encoded) {
+  const decoded   = polyline.decode(encoded);
+  const waypoints = sample(decoded, MAX_WAYPOINTS);
+
+  // state is mutated by the HTTP handlers; the drive loop re-reads it between
+  // every sub-slice so button presses take effect within SECONDS_PER_SLICE.
+  const state  = { speed: PRESETS.cruise, stopped: false };
+  const server = startControlServer(state);
+
+  console.log(`Control mode — open ${CONTROL_URL} in a browser to drive.`);
+  console.log(`Initial speed: ${state.speed} m/s.  Stop with the button or Ctrl-C.`);
+
+  const SECONDS_PER_SLICE = 2;
+
+  outer: for (let i = 0; i < waypoints.length - 1; i++) {
+    const a = waypoints[i];
+    const b = waypoints[i + 1];
+    const segMeters = haversineMeters(a, b);
+
+    let traveled = 0;
+    let prev = a;
+    while (traveled < segMeters - 0.5) {
+      if (state.stopped) break outer;
+      const speed       = state.speed;
+      const chunkMeters = Math.min(speed * SECONDS_PER_SLICE, segMeters - traveled);
+      const t           = (traveled + chunkMeters) / segMeters;
+      const next = [
+        a[0] + (b[0] - a[0]) * t,
+        a[1] + (b[1] - a[1]) * t,
+      ];
+      const dense = densify([prev, next], speed);
+      await runStart(speed, dense);
+      traveled += chunkMeters;
+      prev = next;
+    }
+  }
+
+  server.close();
+  await clearLocation();
+  console.log('Controlled drive done.');
+}
+
 const argv  = process.argv.slice(2);
 const flags = new Set(argv.filter((a) => a.startsWith('--')));
 const positional = argv.filter((a) => !a.startsWith('--'));
@@ -166,7 +333,12 @@ const polyArg  = positional[0];
 const speedArg = positional[1];
 const encoded  = polyArg ?? DEFAULT_POLYLINE;
 
-if (flags.has('--phases')) {
+if (flags.has('--control')) {
+  runControlledDrive(encoded).catch((e) => {
+    console.error('controlled drive failed:', e.message);
+    process.exit(1);
+  });
+} else if (flags.has('--phases')) {
   runPhasedDrive(encoded).catch((e) => {
     console.error('phased drive failed:', e.message);
     process.exit(1);
