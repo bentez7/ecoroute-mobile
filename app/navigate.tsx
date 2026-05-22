@@ -1,4 +1,4 @@
-import { MapboxNavigationView } from '@badatgil/expo-mapbox-navigation';
+import { MapboxNavigationView, type MapboxNavigationViewRef } from '@badatgil/expo-mapbox-navigation';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -7,6 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 import { FeedbackBanner } from '@/components/feedback-banner';
+import { RecenterButton } from '@/components/recenter-button';
+import { Speedometer } from '@/components/speedometer';
 import { useActiveTrip } from '@/context/active-trip';
 import { searchRoutes, type RouteLabel } from '@/lib/api';
 import { consumePendingDirectionsJson } from '@/lib/pending-route';
@@ -86,6 +88,12 @@ export default function NavigateScreen() {
   const { tripId, start, end, cancel, feedback, dismissFeedback } = useActiveTrip();
   const tripStartAttemptedRef = useRef(false);
   const arrivedRef = useRef(false);
+  const mapRef = useRef<MapboxNavigationViewRef>(null);
+
+  const handleRecenter = useCallback(() => {
+    console.log('[navigate] recenter tap, mapRef=', !!mapRef.current);
+    mapRef.current?.recenterMap();
+  }, []);
 
   const ARRIVAL_AUTO_DISMISS_SEC = 8;
   const [arrived, setArrived] = useState(false);
@@ -332,6 +340,7 @@ export default function NavigateScreen() {
   return (
     <View style={StyleSheet.absoluteFill}>
       <MapboxNavigationView
+        ref={mapRef}
         style={StyleSheet.absoluteFill}
         coordinates={coordinates}
         waypointIndices={waypointIndices}
@@ -345,6 +354,15 @@ export default function NavigateScreen() {
         onUserOffRoute={handleUserOffRoute}
         onRouteChanged={handleRouteChanged}
       />
+
+      {/* Speedometer + recenter overlays */}
+      {!arrived && (
+        <SafeAreaView edges={['bottom']} style={styles.overlayWrap} pointerEvents="box-none">
+          <Speedometer style={styles.speedometer} />
+          <RecenterButton style={styles.recenter} onPress={handleRecenter} />
+        </SafeAreaView>
+      )}
+
       <FeedbackBanner items={feedback} onDismiss={dismissFeedback} />
 
       {arrived && (
@@ -383,6 +401,26 @@ const styles = StyleSheet.create({
   },
   errorTitle: { fontSize: 20, fontWeight: '800', color: '#111827' },
   errorText: { fontSize: 14, color: '#6B7280', textAlign: 'center', lineHeight: 20 },
+
+  // Bottom overlays — anchored to the bottom-left / bottom-right above
+  // the system home indicator, so they don't cover the nav-SDK's bottom card.
+  overlayWrap: {
+    position: 'absolute',
+    left: 0, right: 0, bottom: 0,
+    paddingHorizontal: 16,
+    paddingBottom: 120,
+    zIndex: 100,
+  },
+  speedometer: {
+    position: 'absolute',
+    left: 16,
+    bottom: 120,
+  },
+  recenter: {
+    position: 'absolute',
+    right: 16,
+    bottom: 140,
+  },
 
   // Arrival overlay — anchored to the bottom so it doesn't hide the map.
   arrivedOverlay: {

@@ -195,49 +195,95 @@ const CONTROL_PAGE = `<!doctype html>
          padding: 28px; background: #0f172a; color: #f1f5f9; min-height: 100vh; }
   h1 { font-size: 13px; margin: 0 0 6px; color: #94a3b8; font-weight: 500;
        text-transform: uppercase; letter-spacing: 1.5px; }
-  .speed { font-size: 68px; font-weight: 700; margin: 0 0 28px; letter-spacing: -2px; }
+  .speed { font-size: 84px; font-weight: 700; margin: 0 0 4px; letter-spacing: -2px; }
   .speed small { font-size: 22px; color: #64748b; font-weight: 400; margin-left: 10px; }
-  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-width: 520px; }
-  button { padding: 26px 16px; font-size: 17px; font-weight: 600; border: 0;
+  .kmh { font-size: 16px; color: #64748b; margin: 0 0 28px; }
+  .section { font-size: 11px; color: #64748b; text-transform: uppercase;
+             letter-spacing: 1.3px; margin: 18px 0 10px; font-weight: 600; }
+  .row { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px;
+         max-width: 520px; margin-bottom: 4px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; max-width: 520px; }
+  button { padding: 22px 12px; font-size: 17px; font-weight: 700; border: 0;
            border-radius: 14px; color: white; cursor: pointer; transition: transform .06s; }
-  button:active { transform: scale(0.97); }
-  .b-cruise     { background: #16a34a; }
-  .b-idle       { background: #2563eb; }
+  button:active { transform: scale(0.96); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .b-up         { background: #16a34a; }
+  .b-down       { background: #ea580c; }
+  .b-up.big     { background: #15803d; }
+  .b-down.big   { background: #b45309; }
+  .b-cruise     { background: #2563eb; }
+  .b-idle       { background: #475569; }
   .b-hard_accel { background: #ea580c; }
   .b-hard_brake { background: #dc2626; }
-  .b-stop       { grid-column: 1 / -1; background: #475569; }
-  .preset { font-size: 12px; opacity: 0.75; font-weight: 400; display: block; margin-top: 4px; }
+  .b-stop       { grid-column: 1 / -1; background: #334155; }
+  .delta { font-size: 12px; opacity: 0.85; display: block; margin-top: 4px; font-weight: 500; }
 </style>
 </head>
 <body>
   <h1>sim-drive control</h1>
-  <p class="speed"><span id="cur">12</span><small>m/s</small></p>
+  <p class="speed"><span id="cur">8</span><small>m/s</small></p>
+  <p class="kmh"><span id="kmh">29</span> km/h</p>
+
+  <p class="section">Adjust</p>
+  <div class="row">
+    <button class="b-down big" data-delta="-5">−5<span class="delta">m/s</span></button>
+    <button class="b-down"     data-delta="-1">−1<span class="delta">m/s</span></button>
+    <button class="b-up"       data-delta="1">+1<span class="delta">m/s</span></button>
+    <button class="b-up big"   data-delta="5">+5<span class="delta">m/s</span></button>
+  </div>
+
+  <p class="section">Quick set</p>
   <div class="grid">
-    <button class="b-cruise"     data-preset="cruise">Cruise<span class="preset">12 m/s — smooth</span></button>
-    <button class="b-idle"       data-preset="idle">Idle<span class="preset">1 m/s — stopped</span></button>
-    <button class="b-hard_accel" data-preset="hard_accel">Hard Accel<span class="preset">22 m/s — aggressive</span></button>
-    <button class="b-hard_brake" data-preset="hard_brake">Hard Brake<span class="preset">4 m/s — aggressive</span></button>
+    <button class="b-idle"       data-preset="idle">Idle<span class="delta">1 m/s</span></button>
+    <button class="b-cruise"     data-preset="cruise">Cruise<span class="delta">8 m/s</span></button>
+    <button class="b-hard_brake" data-preset="hard_brake">Hard Brake<span class="delta">4 m/s</span></button>
+    <button class="b-hard_accel" data-preset="hard_accel">Hard Accel<span class="delta">22 m/s</span></button>
     <button class="b-stop"       data-stop="1">Stop drive</button>
   </div>
 <script>
 const cur = document.getElementById('cur');
-async function send(preset) {
-  const r = await fetch('/speed', {
+const kmh = document.getElementById('kmh');
+function setDisplay(speed) {
+  cur.textContent = speed;
+  kmh.textContent = Math.round(speed * 3.6);
+}
+async function post(url, body) {
+  const r = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ preset }),
+    body: body ? JSON.stringify(body) : undefined,
   });
-  const j = await r.json();
-  if (j.ok) cur.textContent = j.speed;
+  return r.ok ? r.json() : null;
+}
+async function applyPreset(preset) {
+  const j = await post('/speed', { preset });
+  if (j?.ok) setDisplay(j.speed);
+}
+async function applyDelta(delta) {
+  const j = await post('/speed', { delta });
+  if (j?.ok) setDisplay(j.speed);
 }
 async function stop() {
-  await fetch('/stop', { method: 'POST' });
-  cur.textContent = 'stopped';
+  await post('/stop');
+  cur.textContent = '0';
+  kmh.textContent = '0';
+}
+async function refresh() {
+  try {
+    const r = await fetch('/state');
+    if (!r.ok) return;
+    const j = await r.json();
+    if (typeof j.speed_mps === 'number') setDisplay(j.speed_mps);
+  } catch {}
 }
 for (const btn of document.querySelectorAll('button[data-preset]')) {
-  btn.addEventListener('click', () => send(btn.dataset.preset));
+  btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+}
+for (const btn of document.querySelectorAll('button[data-delta]')) {
+  btn.addEventListener('click', () => applyDelta(Number(btn.dataset.delta)));
 }
 document.querySelector('button[data-stop]').addEventListener('click', stop);
+refresh();
 </script>
 </body>
 </html>`;
@@ -253,20 +299,55 @@ function startControlServer(state) {
       let body = '';
       for await (const chunk of req) body += chunk;
       try {
-        const { preset } = JSON.parse(body || '{}');
-        if (!(preset in PRESETS)) {
+        const { preset, delta, speed } = JSON.parse(body || '{}');
+
+        // Speed clamp: 0 m/s = stopped, 40 m/s = ~144 km/h. Beyond that the
+        // ML windows can't keep up and the simulator visibly jumps between
+        // waypoints.
+        const SPEED_MIN = 0;
+        const SPEED_MAX = 40;
+        const clamp = (v) => Math.max(SPEED_MIN, Math.min(SPEED_MAX, v));
+
+        let nextSpeed;
+        let source;
+        if (typeof speed === 'number') {
+          nextSpeed = clamp(speed);
+          source = `set=${speed}`;
+        } else if (typeof delta === 'number') {
+          nextSpeed = clamp(state.speed + delta);
+          source = `delta=${delta >= 0 ? '+' : ''}${delta}`;
+        } else if (preset && preset in PRESETS) {
+          nextSpeed = PRESETS[preset];
+          source = preset;
+        } else {
           res.writeHead(400, { 'content-type': 'application/json' });
-          res.end(JSON.stringify({ ok: false, error: 'unknown preset' }));
+          res.end(JSON.stringify({ ok: false, error: 'need preset, delta, or speed' }));
           return;
         }
-        state.speed = PRESETS[preset];
-        console.log(`[control] speed → ${state.speed} m/s (${preset})`);
+
+        state.speed = nextSpeed;
+        // Resuming after a stop clears the stop flag — useful when the user
+        // taps ±/preset after pressing Stop.
+        if (state.stopped && nextSpeed > 0) state.stopped = false;
+        console.log(`[control] speed → ${state.speed} m/s (${source})`);
         res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, preset, speed: state.speed }));
+        res.end(JSON.stringify({ ok: true, speed: state.speed }));
       } catch {
         res.writeHead(400, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: 'bad json' }));
       }
+      return;
+    }
+    if (req.method === 'GET' && req.url === '/state') {
+      res.writeHead(200, {
+        'content-type':                'application/json',
+        'access-control-allow-origin': '*',
+      });
+      res.end(JSON.stringify({
+        speed_mps: state.speed,
+        preset:    Object.entries(PRESETS).find(([, v]) => v === state.speed)?.[0] ?? null,
+        stopped:   !!state.stopped,
+      }));
       return;
     }
     if (req.method === 'POST' && req.url === '/stop') {
