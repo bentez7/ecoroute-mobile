@@ -157,7 +157,10 @@ export default function TripDetailScreen() {
     return () => clearTimeout(timer);
   }, [baseCoords, segmentLines, trip]);
 
-  const selectedSegment = segments.find(s => s.id === selectedSegmentId) ?? null;
+  const selectedIndex = selectedSegmentId
+    ? segments.findIndex(s => s.id === selectedSegmentId)
+    : -1;
+  const selectedSegment = selectedIndex >= 0 ? segments[selectedIndex] : null;
 
   const segmentFeedback = useMemo(() => {
     if (!selectedSegment) return [] as FeedbackEvent[];
@@ -167,6 +170,18 @@ export default function TripDetailScreen() {
   const onSegmentTap = useCallback((segmentId: string) => {
     setSelectedSegmentId(prev => prev === segmentId ? null : segmentId);
   }, []);
+
+  const goToPrevSegment = useCallback(() => {
+    if (selectedIndex > 0) {
+      setSelectedSegmentId(segments[selectedIndex - 1].id);
+    }
+  }, [segments, selectedIndex]);
+
+  const goToNextSegment = useCallback(() => {
+    if (selectedIndex >= 0 && selectedIndex < segments.length - 1) {
+      setSelectedSegmentId(segments[selectedIndex + 1].id);
+    }
+  }, [segments, selectedIndex]);
 
   if (loading) {
     return (
@@ -293,6 +308,11 @@ export default function TripDetailScreen() {
             <SegmentDetail
               segment={selectedSegment}
               feedback={segmentFeedback}
+              totalSegments={segments.length}
+              hasPrev={selectedIndex > 0}
+              hasNext={selectedIndex < segments.length - 1}
+              onPrev={goToPrevSegment}
+              onNext={goToNextSegment}
               onClose={() => setSelectedSegmentId(null)}
             />
           ) : (
@@ -383,10 +403,15 @@ function profileChipStyle(profile: string): { backgroundColor: string } {
 }
 
 function SegmentDetail({
-  segment, feedback, onClose,
+  segment, feedback, totalSegments, hasPrev, hasNext, onPrev, onNext, onClose,
 }: {
   segment: TelemetrySegment;
   feedback: FeedbackEvent[];
+  totalSegments: number;
+  hasPrev: boolean;
+  hasNext: boolean;
+  onPrev: () => void;
+  onNext: () => void;
   onClose: () => void;
 }) {
   const color = segment.behaviour_label
@@ -406,9 +431,42 @@ function SegmentDetail({
             {behaviourLabel(segment.behaviour_label)}
           </Text>
         </View>
-        <Text style={styles.segIndex}>Segment #{segment.segment_index + 1}</Text>
-        <TouchableOpacity onPress={onClose}>
+        <Text style={styles.segIndex}>
+          Segment {segment.segment_index + 1} of {totalSegments}
+        </Text>
+        <TouchableOpacity onPress={onClose} hitSlop={8}>
           <MaterialIcons color="#6B7280" name="close" size={22} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.segNavRow}>
+        <TouchableOpacity
+          style={[styles.segNavBtn, !hasPrev && styles.segNavBtnDisabled]}
+          onPress={onPrev}
+          disabled={!hasPrev}
+        >
+          <MaterialIcons
+            color={hasPrev ? '#111827' : '#D1D5DB'}
+            name="chevron-left"
+            size={22}
+          />
+          <Text style={[styles.segNavText, !hasPrev && styles.segNavTextDisabled]}>
+            Previous
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.segNavBtn, !hasNext && styles.segNavBtnDisabled]}
+          onPress={onNext}
+          disabled={!hasNext}
+        >
+          <Text style={[styles.segNavText, !hasNext && styles.segNavTextDisabled]}>
+            Next
+          </Text>
+          <MaterialIcons
+            color={hasNext ? '#111827' : '#D1D5DB'}
+            name="chevron-right"
+            size={22}
+          />
         </TouchableOpacity>
       </View>
 
@@ -579,6 +637,19 @@ const styles = StyleSheet.create({
   segBadgeText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
   segIndex: { flex: 1, fontSize: 14, fontWeight: '700', color: '#111827' },
   segTime: { fontSize: 12, color: '#6B7280', marginBottom: 12 },
+
+  segNavRow: {
+    flexDirection: 'row', gap: 8,
+    marginBottom: 12,
+  },
+  segNavBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 4, paddingVertical: 10, paddingHorizontal: 12,
+    backgroundColor: '#F3F4F6', borderRadius: 12,
+  },
+  segNavBtnDisabled: { backgroundColor: '#F9FAFB' },
+  segNavText: { fontSize: 13, fontWeight: '700', color: '#111827' },
+  segNavTextDisabled: { color: '#D1D5DB' },
 
   confidenceRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,

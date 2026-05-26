@@ -9,7 +9,11 @@ interface Props {
   onDismiss: (id: string) => void;
 }
 
-const AUTO_DISMISS_MS = 3500;
+const AUTO_DISMISS_MS = {
+  info:     3500,
+  warning:  5000,
+  critical: 6000,
+} as const;
 
 const STYLE_BY_SEVERITY: Record<
   FeedbackSeverity | 'eco_praise',
@@ -56,17 +60,16 @@ export function FeedbackBanner({ items, onDismiss }: Props) {
       Vibration.vibrate(200);
     }
 
-    if (sev === 'info' || top.event_type === 'eco_praise') {
-      const t = setTimeout(() => onDismiss(top.id), AUTO_DISMISS_MS);
-      return () => clearTimeout(t);
-    }
+    // All severities auto-dismiss as gentle advisories. Higher severities get a
+    // slightly longer dwell so the driver has time to read them.
+    const dwell = AUTO_DISMISS_MS[sev] ?? AUTO_DISMISS_MS.info;
+    const t = setTimeout(() => onDismiss(top.id), dwell);
+    return () => clearTimeout(t);
   }, [top, onDismiss]);
 
   if (!top) return null;
 
   const s = styleFor(top);
-  const sev = effectiveSeverity(top);
-  const isSticky = sev === 'warning' || sev === 'critical';
 
   return (
     <View pointerEvents="box-none" style={styles.wrap}>
@@ -78,9 +81,6 @@ export function FeedbackBanner({ items, onDismiss }: Props) {
         <Text style={[styles.text, { color: s.fg }]} numberOfLines={2}>
           {top.message}
         </Text>
-        {isSticky ? (
-          <MaterialIcons color={s.fg} name="close" size={18} />
-        ) : null}
       </Pressable>
     </View>
   );

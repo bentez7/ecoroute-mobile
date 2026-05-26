@@ -359,6 +359,7 @@ export interface CreateTripBody {
 
 export async function createTrip(body: CreateTripBody): Promise<Trip> {
   console.log('[trips] create →', { vehicle_id: body.vehicle_id, fuel_type: body.fuel_type });
+  console.log('[trips] route_polyline →', body.route_polyline ?? '(none)');
   const { data } = await api.post<{ success: true; data: Trip }>('/trips', body);
   console.log('[trips] create ←', data.data.id, data.data.status);
   return data.data;
@@ -373,10 +374,26 @@ export async function endTrip(
   return data.data;
 }
 
-export async function cancelTrip(id: string): Promise<Trip> {
-  console.log('[trips] cancel →', id);
-  const { data } = await api.patch<{ success: true; data: Trip }>(`/trips/${id}/cancel`, {});
-  return data.data;
+// Cancel sends the same body as end. The backend either hard-deletes the trip
+// (if distance is below the keep threshold) or marks it cancelled and runs the
+// post-trip pipeline. Returns { deleted: true } in the delete case, or the
+// updated Trip when the data was kept.
+export interface CancelTripResult {
+  deleted?: true;
+  trip?: Trip;
+}
+
+export async function cancelTrip(
+  id: string,
+  body: { ended_at: string; distance_km: number; duration_sec: number },
+): Promise<CancelTripResult> {
+  console.log('[trips] cancel →', id, body);
+  const { data } = await api.patch<{ success: true; data: { deleted: true } | Trip }>(
+    `/trips/${id}/cancel`,
+    body,
+  );
+  if ('deleted' in data.data) return { deleted: true };
+  return { trip: data.data };
 }
 
 export async function getTrip(id: string): Promise<Trip> {

@@ -322,8 +322,25 @@ export function ActiveTripProvider({ children }: { children: React.ReactNode }) 
     try {
       stopFlushLoop();
       await stopLocationTracking();
+      // Flush whatever telemetry we have so the server can compute energy for
+      // a kept cancellation. Best-effort — flush failures shouldn't block cancel.
       try {
-        await cancelTripApi(id);
+        await flushOnce();
+      } catch (e) {
+        console.warn('[active-trip] cancel flush failed', (e as Error).message);
+      }
+
+      const startedMs = startedAtRef.current ?? Date.now();
+      const endedMs = Date.now();
+      const distanceKm = Number((distanceMetersRef.current / 1000).toFixed(3));
+      const durationSec = Math.round((endedMs - startedMs) / 1000);
+
+      try {
+        await cancelTripApi(id, {
+          ended_at: new Date(endedMs).toISOString(),
+          distance_km: distanceKm,
+          duration_sec: durationSec,
+        });
       } catch (e) {
         console.warn('[active-trip] cancel API failed', (e as Error).message);
       }
@@ -338,7 +355,7 @@ export function ActiveTripProvider({ children }: { children: React.ReactNode }) 
     } finally {
       setIsEnding(false);
     }
-  }, [stopFlushLoop, teardownChannel]);
+  }, [flushOnce, stopFlushLoop, teardownChannel]);
 
   const dismissFeedback = useCallback((id: string) => {
     setFeedback((prev) => prev.filter((f) => f.id !== id));

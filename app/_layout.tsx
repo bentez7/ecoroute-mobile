@@ -9,6 +9,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useEffect } from 'react';
 import { Alert } from 'react-native';
 import 'react-native-reanimated';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider } from '@/context/auth';
 import { ActiveTripProvider } from '@/context/active-trip';
@@ -50,8 +51,15 @@ function useOrphanTripRecovery() {
               text: 'Cancel trip',
               style: 'destructive',
               onPress: async () => {
+                // Orphan recovery: we don't have an accurate distance/duration
+                // anymore (state was lost when the app died). Pass zeros so the
+                // backend triggers the discard branch and hard-deletes the trip.
                 try {
-                  await cancelTrip(id);
+                  await cancelTrip(id, {
+                    ended_at: new Date().toISOString(),
+                    distance_km: 0,
+                    duration_sec: 0,
+                  });
                 } catch (e) {
                   console.warn('[orphan] cancel failed', (e as Error).message);
                 }
@@ -77,29 +85,31 @@ export default function RootLayout() {
   useOrphanTripRecovery();
 
   return (
-    <AuthProvider>
-      <ActiveTripProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-            <Stack.Screen name="route-select" options={{ headerShown: false }} />
-            <Stack.Screen name="my-vehicles" options={{ headerShown: false }} />
-            <Stack.Screen name="trip-detail" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="navigate"
-              options={{ headerShown: false, animation: 'slide_from_bottom' }}
-            />
-            {/* DEV-ONLY: remove with app/dev-navigate.tsx when done */}
-            <Stack.Screen
-              name="dev-navigate"
-              options={{ headerShown: false, animation: 'slide_from_bottom' }}
-            />
-            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-          </Stack>
-          <StatusBar style="auto" />
-        </ThemeProvider>
-      </ActiveTripProvider>
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <ActiveTripProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <Stack>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="route-select" options={{ headerShown: false }} />
+              <Stack.Screen name="my-vehicles" options={{ headerShown: false }} />
+              <Stack.Screen name="trip-detail" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="navigate"
+                options={{ headerShown: false, animation: 'slide_from_bottom' }}
+              />
+              {/* DEV-ONLY: remove with app/dev-navigate.tsx when done */}
+              <Stack.Screen
+                name="dev-navigate"
+                options={{ headerShown: false, animation: 'slide_from_bottom' }}
+              />
+              <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+            </Stack>
+            <StatusBar style="auto" />
+          </ThemeProvider>
+        </ActiveTripProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }

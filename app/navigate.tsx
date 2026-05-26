@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 import { FeedbackBanner } from '@/components/feedback-banner';
@@ -32,6 +32,8 @@ function hasMeaningfulSpan(coords: LatLng[]): boolean {
 
 export default function NavigateScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  console.log('[navigate] insets', insets);
   const params = useLocalSearchParams<{
     polyline: string;
     label: RouteLabel;
@@ -330,9 +332,10 @@ export default function NavigateScreen() {
   }
 
   return (
-    <View style={StyleSheet.absoluteFill}>
+    <View style={styles.root}>
+      <View style={{ height: insets.top, backgroundColor: '#263C55' }} />
       <MapboxNavigationView
-        style={StyleSheet.absoluteFill}
+        style={{ flex: 1 }}
         coordinates={coordinates}
         waypointIndices={waypointIndices}
         useRouteMatchingApi={true}
@@ -345,6 +348,7 @@ export default function NavigateScreen() {
         onUserOffRoute={handleUserOffRoute}
         onRouteChanged={handleRouteChanged}
       />
+      <View style={{ height: insets.bottom, backgroundColor: '#263C55' }} />
       <FeedbackBanner items={feedback} onDismiss={dismissFeedback} />
 
       {arrived && (
@@ -373,6 +377,7 @@ export default function NavigateScreen() {
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: '#000000' },
   errorWrap: {
     flex: 1,
     backgroundColor: '#FFFFFF',
