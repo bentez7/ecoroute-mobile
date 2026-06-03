@@ -133,6 +133,68 @@ export default function CarbonFootprintScreen() {
                       </Text>
                     </View>
                   </View>
+
+                  <View style={styles.gamifyHeaderRow}>
+                    <Text style={styles.sectionTitle}>Reduce your footprint</Text>
+                    <View style={styles.comingSoonPill}>
+                      <Text style={styles.comingSoonText}>Coming soon</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.gamifySubtitle}>
+                    Join programs and challenges that reward greener travel choices.
+                  </Text>
+
+                  <View style={styles.programCard}>
+                    <View style={[styles.equivIconBox, { backgroundColor: '#E0F2FE' }]}>
+                      <MaterialIcons color="#0284C7" name="emoji-events" size={26} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.equivTitle}>Weekly Eco Challenges</Text>
+                      <Text style={styles.equivSub}>
+                        Hit weekly low-emission trip goals to earn badges and streaks.
+                      </Text>
+                    </View>
+                    <MaterialIcons color="#9CA3AF" name="lock-outline" size={20} />
+                  </View>
+
+                  <View style={styles.programCard}>
+                    <View style={[styles.equivIconBox, { backgroundColor: '#F3E8FF' }]}>
+                      <MaterialIcons color="#7C3AED" name="leaderboard" size={26} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.equivTitle}>Community Leaderboard</Text>
+                      <Text style={styles.equivSub}>
+                        Compare your CO₂ savings with friends and climb the ranks.
+                      </Text>
+                    </View>
+                    <MaterialIcons color="#9CA3AF" name="lock-outline" size={20} />
+                  </View>
+
+                  <View style={styles.programCard}>
+                    <View style={[styles.equivIconBox, { backgroundColor: '#DCFCE7' }]}>
+                      <MaterialIcons color="#16A34A" name="redeem" size={26} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.equivTitle}>Green Rewards</Text>
+                      <Text style={styles.equivSub}>
+                        Redeem points from greener trips for partner perks and tree planting.
+                      </Text>
+                    </View>
+                    <MaterialIcons color="#9CA3AF" name="lock-outline" size={20} />
+                  </View>
+
+                  <View style={styles.programCard}>
+                    <View style={[styles.equivIconBox, { backgroundColor: '#FEE2E2' }]}>
+                      <MaterialIcons color="#DC2626" name="flag" size={26} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.equivTitle}>Personal Carbon Goal</Text>
+                      <Text style={styles.equivSub}>
+                        Set a monthly cap and get nudges when you're close to hitting it.
+                      </Text>
+                    </View>
+                    <MaterialIcons color="#9CA3AF" name="lock-outline" size={20} />
+                  </View>
                 </>
               ) : (
                 <View style={styles.emptyCard}>
@@ -206,6 +268,26 @@ const styles = StyleSheet.create({
   },
   equivTitle: { fontSize: 18, fontWeight: '800', color: '#111827' },
   equivSub: { fontSize: 12, color: '#6B7280', marginTop: 2, lineHeight: 16 },
+
+  gamifyHeaderRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: 20, marginBottom: 4,
+  },
+  comingSoonPill: {
+    backgroundColor: '#E0E7FF', borderRadius: 999,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  comingSoonText: { fontSize: 11, fontWeight: '800', color: '#4338CA', letterSpacing: 0.3 },
+  gamifySubtitle: { fontSize: 12, color: '#6B7280', marginBottom: 12, lineHeight: 16 },
+
+  programCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16, padding: 14,
+    marginBottom: 10,
+    borderWidth: 1, borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+  },
 
   emptyCard: {
     backgroundColor: '#FFFFFF',

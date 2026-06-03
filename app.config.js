@@ -19,6 +19,9 @@ export default {
           'EcoRoute uses your location to plan eco-friendly routes and track your trips.',
         NSLocationAlwaysAndWhenInUseUsageDescription:
           'EcoRoute uses your location to plan eco-friendly routes and track your trips.',
+        NSAppTransportSecurity: {
+          NSAllowsLocalNetworking: true,
+        },
       },
     },
     android: {

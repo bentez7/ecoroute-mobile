@@ -99,11 +99,6 @@ export default function RootLayout() {
                 name="navigate"
                 options={{ headerShown: false, animation: 'slide_from_bottom' }}
               />
-              {/* DEV-ONLY: remove with app/dev-navigate.tsx when done */}
-              <Stack.Screen
-                name="dev-navigate"
-                options={{ headerShown: false, animation: 'slide_from_bottom' }}
-              />
               <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
             </Stack>
             <StatusBar style="auto" />

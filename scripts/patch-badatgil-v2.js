@@ -43,6 +43,7 @@ copy('ios/ExpoMapboxNavigationModule.swift',   'ios/ExpoMapboxNavigationModule.s
 copy('ios/ExpoMapboxNavigationView.swift',     'ios/ExpoMapboxNavigationView.swift');
 copy('build/index.js',                         'build/index.js');
 copy('build/index.d.ts',                       'build/index.d.ts');
+copy('build/ExpoMapboxNavigation.types.d.ts',  'build/ExpoMapboxNavigation.types.d.ts');
 copy('src/index.ts',                           'src/index.ts');
 
 console.log('[patch-badatgil-v2] done — Mapbox Nav SDK pinned to v2 line');
