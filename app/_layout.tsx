@@ -13,7 +13,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthProvider } from '@/context/auth';
 import { ActiveTripProvider } from '@/context/active-trip';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useTimeScheme } from '@/hooks/use-time-scheme';
 import { cancelTrip, getTrip } from '@/lib/api';
 import { ACTIVE_TRIP_KEY, stopLocationTracking } from '@/lib/location-task';
 import { clearTrip } from '@/lib/telemetry-queue';
@@ -81,7 +81,7 @@ function useOrphanTripRecovery() {
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+  const colorScheme = useTimeScheme();
   useOrphanTripRecovery();
 
   return (

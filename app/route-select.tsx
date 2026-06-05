@@ -20,6 +20,7 @@ import {
   type RouteOption,
   type Vehicle,
 } from '@/lib/api';
+import { useTimeScheme } from '@/hooks/use-time-scheme';
 import { setPendingDirectionsJson } from '@/lib/pending-route';
 import { synthesizeDirectionsResponse } from '@/lib/synth-directions';
 
@@ -57,6 +58,9 @@ function decodePolyline(encoded: string | null | undefined): [number, number][] 
 
 export default function RouteSelectScreen() {
   const router = useRouter();
+  const timeScheme = useTimeScheme();
+  const mapStyleURL =
+    timeScheme === 'dark' ? MapboxGL.StyleURL.Dark : MapboxGL.StyleURL.Street;
   const params = useLocalSearchParams<{
     destName:    string;
     destAddress: string;
@@ -191,7 +195,7 @@ export default function RouteSelectScreen() {
   return (
     <View style={styles.root}>
       {/* Map */}
-      <MapboxGL.MapView style={StyleSheet.absoluteFill} styleURL={MapboxGL.StyleURL.Street}>
+      <MapboxGL.MapView style={StyleSheet.absoluteFill} styleURL={mapStyleURL}>
         <MapboxGL.Camera
           ref={cameraRef}
           defaultSettings={{ centerCoordinate: [originLng, originLat], zoomLevel: 12 }}

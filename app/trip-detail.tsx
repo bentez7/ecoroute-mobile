@@ -22,6 +22,7 @@ import {
   type TelemetrySegment,
   type Trip,
 } from '@/lib/api';
+import { useTimeScheme } from '@/hooks/use-time-scheme';
 
 const SEGMENT_COLOR: Record<BehaviourLabel, string> = {
   smooth:     '#2ECC71',
@@ -81,6 +82,9 @@ export default function TripDetailScreen() {
   const params = useLocalSearchParams<{ tripId: string }>();
   const tripId = params.tripId ?? '';
   const insets = useSafeAreaInsets();
+  const timeScheme = useTimeScheme();
+  const mapStyleURL =
+    timeScheme === 'dark' ? MapboxGL.StyleURL.Dark : MapboxGL.StyleURL.Street;
 
   const cameraRef = useRef<MapboxGL.Camera>(null);
 
@@ -219,7 +223,7 @@ export default function TripDetailScreen() {
     <View style={styles.root}>
       <MapboxGL.MapView
         style={StyleSheet.absoluteFill}
-        styleURL={MapboxGL.StyleURL.Dark}
+        styleURL={mapStyleURL}
         scaleBarEnabled={false}
       >
         <MapboxGL.Camera

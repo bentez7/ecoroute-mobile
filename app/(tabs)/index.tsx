@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/context/auth';
+import { useTimeScheme } from '@/hooks/use-time-scheme';
 import {
   autocomplete,
   getTrips,
@@ -36,6 +37,9 @@ export default function HomeScreen() {
   const { user, logout } = useAuth();
   const router = useRouter();
   const cameraRef = useRef<MapboxGL.Camera>(null);
+  const timeScheme = useTimeScheme();
+  const mapStyleURL =
+    timeScheme === 'dark' ? MapboxGL.StyleURL.Dark : MapboxGL.StyleURL.Street;
 
   // Delay map render until screen transition settles
   const [screenReady, setScreenReady] = useState(false);
@@ -177,7 +181,7 @@ export default function HomeScreen() {
       {/* Map */}
       <View style={styles.mapCard}>
         {screenReady && (
-          <MapboxGL.MapView style={styles.map} styleURL={MapboxGL.StyleURL.Street}>
+          <MapboxGL.MapView style={styles.map} styleURL={mapStyleURL}>
             <MapboxGL.Camera ref={cameraRef} followUserLocation followZoomLevel={14} />
             <MapboxGL.UserLocation
               visible

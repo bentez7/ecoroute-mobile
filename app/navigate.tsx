@@ -10,6 +10,7 @@ import { FeedbackBanner } from '@/components/feedback-banner';
 import { RecenterButton } from '@/components/recenter-button';
 import { Speedometer } from '@/components/speedometer';
 import { useActiveTrip } from '@/context/active-trip';
+import { useTimeScheme } from '@/hooks/use-time-scheme';
 import { searchRoutes, type RouteLabel } from '@/lib/api';
 import { consumePendingDirectionsJson } from '@/lib/pending-route';
 import { synthesizeDirectionsResponse } from '@/lib/synth-directions';
@@ -91,6 +92,11 @@ export default function NavigateScreen() {
   const tripStartAttemptedRef = useRef(false);
   const arrivedRef = useRef(false);
   const mapRef = useRef<MapboxNavigationViewRef>(null);
+  const timeScheme = useTimeScheme();
+  const navMapStyle =
+    timeScheme === 'dark'
+      ? 'mapbox://styles/mapbox/navigation-night-v1'
+      : 'mapbox://styles/mapbox/navigation-day-v1';
 
   const handleRecenter = useCallback(() => {
     console.log('[navigate] recenter tap, mapRef=', !!mapRef.current);
@@ -345,6 +351,7 @@ export default function NavigateScreen() {
       <MapboxNavigationView
         ref={mapRef}
         style={{ flex: 1 }}
+        mapStyle={navMapStyle}
         coordinates={coordinates}
         waypointIndices={waypointIndices}
         useRouteMatchingApi={true}
